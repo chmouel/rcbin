@@ -1,0 +1,54 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - asasalint
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - nolintlint
+    - revive
+    - unconvert
+    - unparam
+    - whitespace
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gosec:
+      excludes:
+        # rc deliberately runs external git/yadm/user commands through the
+        # Runner abstraction, and reads/writes user-specified config, link, and
+        # backup paths with conventional dotfile permissions.
+        - G204 # subprocess launched with a variable
+        - G304 # file inclusion via variable path
+        - G301 # directory permissions (0755 is intended for config dirs)
+        - G306 # file permissions (0644 is intended for generated config)
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/chmouel/rc
