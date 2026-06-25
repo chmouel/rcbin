@@ -195,6 +195,24 @@ func TestRelativeLink(t *testing.T) {
 	}
 }
 
+func TestLinkSourceCanonicalizesParentsWithoutResolvingSourceLeaf(t *testing.T) {
+	root := filepath.FromSlash("/var/folders/example")
+	targetParent := filepath.Join(root, ".config")
+	target := filepath.Join(targetParent, "file")
+	sourceParent := filepath.Join(root, "src")
+	source := filepath.Join(sourceParent, "link")
+
+	l := &Linker{FS: evalSymlinkFS{resolved: map[string]string{
+		targetParent: filepath.FromSlash("/private/var/folders/example/.config"),
+		sourceParent: filepath.FromSlash("/private/var/folders/example/src"),
+		source:       filepath.FromSlash("/private/var/folders/example/real/file"),
+	}}}
+	got := l.linkSource(target, source)
+	if want := filepath.Join("..", "src", "link"); got != want {
+		t.Fatalf("linkSource() = %q, want %q", got, want)
+	}
+}
+
 func TestNestedTargetUnderManagedSymlinkedParent(t *testing.T) {
 	home := t.TempDir()
 	rcRoot := filepath.Join(home, ".local", "share", "rc")
@@ -240,6 +258,18 @@ func TestNestedTargetUnderManagedSymlinkedParent(t *testing.T) {
 	if resolved != childSource {
 		t.Fatalf("child target resolves to %q, want %q", resolved, childSource)
 	}
+}
+
+type evalSymlinkFS struct {
+	OSFS
+	resolved map[string]string
+}
+
+func (fs evalSymlinkFS) EvalSymlinks(path string) (string, error) {
+	if resolved, ok := fs.resolved[path]; ok {
+		return resolved, nil
+	}
+	return path, nil
 }
 
 func TestDryRunNoChanges(t *testing.T) {

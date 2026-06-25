@@ -267,15 +267,32 @@ func (l *Linker) removeStale(ctx context.Context, old, next *Manifest) {
 
 // linkSource prefers a relative link target when one can be computed.
 func (l *Linker) linkSource(target, source string) string {
-	parent := filepath.Dir(target)
-	if resolved, err := l.FS.EvalSymlinks(parent); err == nil {
-		parent = resolved
-	}
+	parent := l.resolvedParent(target)
+	source = l.resolvedSource(source)
 	rel, err := filepath.Rel(parent, source)
 	if err != nil {
 		return source
 	}
 	return rel
+}
+
+func (l *Linker) resolvedParent(path string) string {
+	parent := filepath.Dir(path)
+	if resolved, err := l.FS.EvalSymlinks(parent); err == nil {
+		return resolved
+	}
+	return parent
+}
+
+func (l *Linker) resolvedSource(source string) string {
+	parent := filepath.Dir(source)
+	resolved, err := l.FS.EvalSymlinks(parent)
+	if err != nil {
+		return source
+	}
+	// Keep the source leaf intact so a symlink source links to the symlink, not
+	// to its resolved destination.
+	return filepath.Join(resolved, filepath.Base(source))
 }
 
 func (l *Linker) underHome(p string) bool {
