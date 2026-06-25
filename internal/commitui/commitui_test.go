@@ -43,6 +43,42 @@ func newAdapter(t *testing.T, key byte) (*Adapter, *runner.Fake) {
 	return &Adapter{R: fake, Rep: rep, Pr: fakePrompter{key: key}}, fake
 }
 
+func TestMenuPromptHighlightsHotkeys(t *testing.T) {
+	a := &Adapter{Rep: output.New(io.Discard, io.Discard, true, false)}
+	prompt := a.menuPrompt("emacs-config")
+	if !strings.Contains(prompt, "emacs-config") {
+		t.Errorf("menu prompt must include the repo name, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "\033[") {
+		t.Errorf("menu prompt with color on must emit ANSI, got %q", prompt)
+	}
+
+	plain := (&Adapter{Rep: output.New(io.Discard, io.Discard, false, false)}).menuPrompt("emacs-config")
+	if strings.Contains(plain, "\033[") {
+		t.Errorf("menu prompt with color off must be plain, got %q", plain)
+	}
+	for _, want := range []string{"[m]", "[l]", "[s]", "[a]", "[c]", "[q]"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("menu prompt missing %q in %q", want, plain)
+		}
+	}
+}
+
+func TestColorStatusLineColorsColumns(t *testing.T) {
+	a := &Adapter{Rep: output.New(io.Discard, io.Discard, true, false)}
+	got := a.colorStatusLine(" M early-init.el")
+	if !strings.Contains(got, "early-init.el") {
+		t.Errorf("status line must keep the path, got %q", got)
+	}
+	if !strings.Contains(got, "\033[") {
+		t.Errorf("status line with color on must emit ANSI, got %q", got)
+	}
+	plain := (&Adapter{Rep: output.New(io.Discard, io.Discard, false, false)}).colorStatusLine(" M early-init.el")
+	if plain != " M early-init.el" {
+		t.Errorf("status line with color off must be unchanged, got %q", plain)
+	}
+}
+
 func TestMagitUsesTtyFrameAndRepoDir(t *testing.T) {
 	fake := runner.NewFake()
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)

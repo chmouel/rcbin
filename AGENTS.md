@@ -48,6 +48,12 @@ internal/migrate/       legacy line-based config -> TOML overlays (migration onl
 - **Output discipline.** Machine output (e.g. `status --format waybar`) is the
   only thing written to stdout. Logs and diagnostics go to stderr via
   `output.Reporter`. Keep stdout clean for commands that have machine output.
+- **Color and styling.** All ANSI must go through `Reporter.paint`/the styled
+  helpers (`Bold`/`Dim`/`Accent`/`Key`/`Good`/`Bad`/`Caution`/`Rule`/
+  `SuccessLine`/`Arrow`) so a single gate controls it. Color is computed by
+  `output.ColorFor`: off when `--no-color` is set, when `NO_COLOR` is present, or
+  when stderr is not a TTY. Status icons use Nerd Font glyphs on the human
+  (stderr) surface only; machine output on stdout stays plain.
 - **Exit codes.** `0` success, `1` operational/validation failure, `2` invalid
   CLI usage. In `internal/app`, wrap operational failures returned from a
   command's `RunE` with `op(err)`; flag-parsing and argument-validation errors

@@ -55,6 +55,11 @@ making any changes.
   actionable errors while clean repositories continue.
 - Machine output (such as `status --format waybar`) is written to stdout; logs
   and diagnostics go to stderr.
+- Output uses colored section rules, highlighted menu hotkeys, and
+  [Nerd Font](https://www.nerdfonts.com/) glyphs for status icons, so a patched
+  font is recommended. Color is enabled only when stderr is a terminal; it is
+  disabled automatically when output is piped/redirected, when `NO_COLOR` is
+  set, or with `--no-color`.
 - Exit codes: `0` success, `1` operational/validation failure, `2` invalid CLI
   usage.
 
