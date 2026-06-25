@@ -121,7 +121,11 @@ func TestRenderRoundTrips(t *testing.T) {
 		t.Fatalf("generated TOML must parse: found=%v err=%v", found, err)
 	}
 	vars := config.Vars{"HOME": "/home/u", "HOST": "ibra", "GOPATH": "/home/u/go"}
-	cfg, err := config.Build([]config.File{config.Defaults(), file}, vars, "ibra")
+	// Migrated overlays reference the legacy "chmouzies" root, which a migrated
+	// user defines in their global config (see examples/config.toml); supply it
+	// here so the overlay validates in isolation.
+	globalRoots := config.File{Roots: map[string]string{"chmouzies": "~/.local/share/chmouzies"}}
+	cfg, err := config.Build([]config.File{config.Defaults(), globalRoots, file}, vars, "ibra")
 	if err != nil {
 		t.Fatalf("generated TOML must validate: %v", err)
 	}
@@ -157,12 +161,13 @@ func TestMigrateRealHostFiles(t *testing.T) {
 	}
 
 	vars := config.Vars{"HOME": "/home/u", "HOST": "ibra", "GOPATH": "/home/u/go"}
+	globalRoots := config.File{Roots: map[string]string{"chmouzies": "~/.local/share/chmouzies"}}
 	for _, r := range results {
 		file, found, err := config.ReadFile(r.OutputFile)
 		if err != nil || !found {
 			t.Fatalf("%s: generated TOML must parse: %v", r.Profile, err)
 		}
-		if _, err := config.Build([]config.File{config.Defaults(), file}, vars, "ibra"); err != nil {
+		if _, err := config.Build([]config.File{config.Defaults(), globalRoots, file}, vars, "ibra"); err != nil {
 			t.Fatalf("%s: generated TOML must validate: %v", r.Profile, err)
 		}
 		t.Logf("%s: links=%d bins=%d repos=%d", r.Profile, r.Links, r.Bins, r.Repos)

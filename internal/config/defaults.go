@@ -2,43 +2,29 @@ package config
 
 func boolPtr(v bool) *bool { return &v }
 
-// Defaults returns the built-in global configuration. It encodes the legacy
-// hard-coded roots, repositories, and maintenance tasks so the tool is usable
-// before any user file exists. The user's global file and host overlays merge
-// on top of these values.
+// Defaults returns the built-in global configuration. It encodes only neutral,
+// non-personal structure: generic roots, sensible sync/tool/doctor settings, and
+// OS/tool update tasks that are skipped unless their commands exist. Personal
+// data (Git provider, repositories to clone, the YADM backup remote, and backup
+// tasks that commit into your own config repo) intentionally lives in the user
+// global file, not the binary. See examples/config.toml for a template. The
+// user's global file and host overlays merge on top of these values.
 func Defaults() File {
 	return File{
 		Roots: map[string]string{
-			"home":           "~",
-			"config":         "~/.config",
-			"rc":             "~/.local/share/rc",
-			"chmouzies":      "~/.local/share/chmouzies",
-			"repo_base":      "~/git",
-			"desktop_bin":    "~/.local/bin/desktop",
-			"yadm_config":    "~/.config/yadm",
-			"yadm_state":     "~/.local/share/yadm",
-			"desktop_config": "~/.local/share/desktop-config",
-			"emacs":          "~/.config/emacs",
-			"zsh":            "~/.config/zsh",
-			"systemd_user":   "~/.config/systemd/user",
-		},
-		Git: GitConfig{
-			Provider: "git@gitlab.com:chmouel",
-			Repositories: []DefaultRepo{
-				{Path: "${HOME}/.local/share/rc", Clone: "rc-config"},
-				{Path: "${HOME}/.local/share/chmouzies", Clone: "git@gitlab.com:chmouel/chmouzies"},
-				{Path: "${HOME}/.config/emacs", Clone: "emacs-config"},
-				{Path: "${HOME}/.local/share/desktop-config", Clone: "desktop-config"},
-				{Path: "${HOME}/git/perso/zmk", Optional: true},
-			},
+			"home":         "~",
+			"config":       "~/.config",
+			"rc":           "~/.local/share/rc",
+			"repo_base":    "~/git",
+			"desktop_bin":  "~/.local/bin",
+			"yadm_config":  "~/.config/yadm",
+			"yadm_state":   "~/.local/share/yadm",
+			"emacs":        "~/.config/emacs",
+			"zsh":          "~/.config/zsh",
+			"systemd_user": "~/.config/systemd/user",
 		},
 		Yadm: YadmConfig{
-			Remote: "ssh://chmouel@ssh.chmouel.com:/media/bigdisk/Backup/Config/",
-			Track: []string{
-				"${HOME}/.config/yadm",
-				"${HOME}/.password-store",
-				"${HOME}/.local/share/applications",
-			},
+			Track: []string{"${HOME}/.config/yadm"},
 		},
 		Sync:  SyncConfig{Concurrency: 4},
 		Tools: ToolsLayer{Lazygit: "lazygit", Aicommit: "aicommit", Shell: "sh", PreferEmacs: boolPtr(true)},
@@ -49,48 +35,7 @@ func Defaults() File {
 				{Name: "gitlab", URL: "https://gitlab.com"},
 			},
 		},
-		Backups: defaultBackups(),
 		Updates: defaultUpdates(),
-	}
-}
-
-func defaultBackups() []BackupTask {
-	return []BackupTask{
-		{
-			Name:     "dconf",
-			Requires: []string{"dconf"},
-			Command:  Command{Shell: "dconf dump / | grep -Ev '(nag-check=|timestamp=|reminders-past|token|last-backup|last-run|token)'"},
-			Repo:     "desktop_config",
-			Output:   "dconf/dconf.reg-${HOST}",
-			Signoff:  true,
-		},
-		{
-			Name:      "brew-packages",
-			Platforms: []string{"linux", "darwin"},
-			Requires:  []string{"brew"},
-			Command:   Command{Argv: []string{"brew", "list", "-1", "--installed-on-request"}},
-			Repo:      "desktop_config",
-			Output:    "homebrew/packages-${HOST}",
-			Signoff:   true,
-		},
-		{
-			Name:      "brew-casks",
-			Platforms: []string{"darwin"},
-			Requires:  []string{"brew"},
-			Command:   Command{Argv: []string{"brew", "list", "-1", "--cask"}},
-			Repo:      "desktop_config",
-			Output:    "homebrew/packages-casks-${HOST}",
-			Signoff:   true,
-		},
-		{
-			Name:      "pacman",
-			Platforms: []string{"linux"},
-			Requires:  []string{"pacman"},
-			Command:   Command{Argv: []string{"pacman", "-Qq"}},
-			Repo:      "desktop_config",
-			Output:    "arch/packages-${HOST}",
-			Signoff:   true,
-		},
 	}
 }
 

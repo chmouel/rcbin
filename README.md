@@ -5,9 +5,8 @@ synchronizes [YADM](https://yadm.io) and Git repositories, manages dotfile
 symlinks and binaries, runs backups and OS/tool updates, reports a Waybar
 status, and runs diagnostics.
 
-It is a focused Go rewrite of a large Bash script. The design and the reasoning
-behind every behavior are documented in [`rc-rewrite.md`](./rc-rewrite.md).
-Conventions for contributors and agents are in [`AGENTS.md`](./AGENTS.md).
+It is a focused Go rewrite of a large Bash script. Conventions for contributors
+and agents are in [`AGENTS.md`](./AGENTS.md).
 
 ## Install
 
@@ -88,6 +87,17 @@ Scalars use the last specified value. Domain lists are keyed — links by target
 binaries by target, repositories by path, tasks by name — so later layers
 override earlier ones deterministically, giving the exact host top priority.
 
+The built-in defaults are deliberately neutral: they provide generic roots,
+sync/tool/doctor settings, and OS/tool update tasks, but **no** Git provider,
+repositories, YADM backup remote, or backup tasks. Put those in your global
+file. A complete, ready-to-adapt template lives in
+[`examples/config.toml`](./examples/config.toml):
+
+```bash
+cp examples/config.toml ~/.config/rc/config.toml
+# then edit the provider, repositories, yadm remote, roots, and backups
+```
+
 A minimal host overlay:
 
 ```toml
@@ -99,7 +109,7 @@ source = "git"
 target = "~/.config/git"
 
 [[bins]]
-source_root = "chmouzies"
+source_root = "rc"
 source = "git/gh-clone"
 target = "gh-clone"
 discover_completion = true

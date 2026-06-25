@@ -1,0 +1,93 @@
+# Example global configuration for rc.
+#
+# Copy this to ~/.config/rc/config.toml (honors $XDG_CONFIG_HOME) and adapt it to
+# your own machines. It merges on top of the built-in defaults, which are kept
+# intentionally neutral: the Git provider, repositories to clone, the YADM backup
+# remote, and backup tasks all live here rather than in the binary.
+#
+#   cp examples/config.toml ~/.config/rc/config.toml
+#
+# Validate after editing with: rc config validate
+
+version = 1
+
+# Named roots referenced by links, bins, repositories, and backups. These extend
+# the built-in roots (home, config, rc, repo_base, desktop_bin, yadm_config,
+# yadm_state, emacs, zsh, systemd_user).
+[roots]
+chmouzies = "~/.local/share/chmouzies"
+desktop_config = "~/.local/share/desktop-config"
+# Override the default ~/.local/bin if you keep desktop scripts in a subfolder.
+desktop_bin = "~/.local/bin/desktop"
+
+# Git provider shorthand and the repositories rc clones and synchronizes. A clone
+# value without a slash is resolved as "<provider>/<value>.git"; a full URL is
+# used verbatim. Optional repositories are only synchronized when they exist.
+[git]
+provider = "git@gitlab.com:youruser"
+
+[[git.repositories]]
+path = "${HOME}/.local/share/rc"
+clone = "rc-config"
+
+[[git.repositories]]
+path = "${HOME}/.local/share/chmouzies"
+clone = "git@gitlab.com:youruser/chmouzies"
+
+[[git.repositories]]
+path = "${HOME}/.config/emacs"
+clone = "emacs-config"
+
+[[git.repositories]]
+path = "${HOME}/.local/share/desktop-config"
+clone = "desktop-config"
+
+[[git.repositories]]
+path = "${HOME}/git/perso/zmk"
+optional = true
+
+# YADM remote and the paths staged before each sync.
+[yadm]
+remote = "ssh://youruser@your.backup.host:/path/to/Backup/Config/"
+track = [
+  "${HOME}/.config/yadm",
+  "${HOME}/.password-store",
+  "${HOME}/.local/share/applications",
+]
+
+# Backups capture a command's stdout into a tracked file in the named repo root
+# and commit it when it changes. ${HOST} expands to the machine hostname.
+[[backups]]
+name = "dconf"
+requires = ["dconf"]
+command = { shell = "dconf dump / | grep -Ev '(nag-check=|timestamp=|reminders-past|token|last-backup|last-run|token)'" }
+repo = "desktop_config"
+output = "dconf/dconf.reg-${HOST}"
+signoff = true
+
+[[backups]]
+name = "brew-packages"
+platforms = ["linux", "darwin"]
+requires = ["brew"]
+command = { argv = ["brew", "list", "-1", "--installed-on-request"] }
+repo = "desktop_config"
+output = "homebrew/packages-${HOST}"
+signoff = true
+
+[[backups]]
+name = "brew-casks"
+platforms = ["darwin"]
+requires = ["brew"]
+command = { argv = ["brew", "list", "-1", "--cask"] }
+repo = "desktop_config"
+output = "homebrew/packages-casks-${HOST}"
+signoff = true
+
+[[backups]]
+name = "pacman"
+platforms = ["linux"]
+requires = ["pacman"]
+command = { argv = ["pacman", "-Qq"] }
+repo = "desktop_config"
+output = "arch/packages-${HOST}"
+signoff = true

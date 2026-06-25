@@ -119,8 +119,8 @@ func TestDuplicateWithinLayerIsError(t *testing.T) {
 func TestBinTargetResolution(t *testing.T) {
 	layer := File{
 		Bins: []Bin{
-			{SourceRoot: "chmouzies", Source: "git/gh-clone", Target: "gh-clone"},
-			{SourceRoot: "chmouzies", Source: "x", Target: "sub/dir/name"},
+			{SourceRoot: "rc", Source: "git/gh-clone", Target: "gh-clone"},
+			{SourceRoot: "rc", Source: "x", Target: "sub/dir/name"},
 		},
 	}
 	cfg, err := Build([]File{Defaults(), layer}, testVars(), "ibra")
@@ -131,7 +131,7 @@ func TestBinTargetResolution(t *testing.T) {
 	for _, b := range cfg.Bins {
 		byTarget[b.Target] = b
 	}
-	if _, ok := byTarget["/home/u/.local/bin/desktop/gh-clone"]; !ok {
+	if _, ok := byTarget["/home/u/.local/bin/gh-clone"]; !ok {
 		t.Errorf("bare bin target not placed under desktop_bin: %v", cfg.Bins)
 	}
 	if _, ok := byTarget["/home/u/sub/dir/name"]; !ok {
@@ -171,16 +171,43 @@ func TestDefaultsResolve(t *testing.T) {
 	if cfg.WorkerLimit() != 4 {
 		t.Errorf("expected worker limit 4, got %d", cfg.WorkerLimit())
 	}
-	if len(cfg.Repos) == 0 {
-		t.Error("expected default repositories")
+	if len(cfg.Updates) == 0 {
+		t.Error("expected default update tasks")
 	}
-	if len(cfg.Backups) == 0 || len(cfg.Updates) == 0 {
-		t.Error("expected default backups and updates")
+	// Defaults must stay neutral: no personal provider, backup remote, repos, or
+	// backup tasks are baked into the binary.
+	if cfg.Provider != "" {
+		t.Errorf("expected empty default provider, got %q", cfg.Provider)
 	}
-	// HOST is expanded inside backup output paths.
-	for _, b := range cfg.Backups {
-		if strings.Contains(b.Output, "${HOST}") {
-			t.Errorf("backup output not expanded: %q", b.Output)
-		}
+	if cfg.Yadm.Remote != "" {
+		t.Errorf("expected empty default yadm remote, got %q", cfg.Yadm.Remote)
+	}
+	if len(cfg.Repos) != 0 {
+		t.Errorf("expected no default repositories, got %v", cfg.Repos)
+	}
+	if len(cfg.Backups) != 0 {
+		t.Errorf("expected no default backups, got %v", cfg.Backups)
+	}
+}
+
+func TestBackupOutputExpandsHost(t *testing.T) {
+	layer := File{
+		Roots: map[string]string{"cfgrepo": "~/cfg"},
+		Backups: []BackupTask{{
+			Name:    "dconf",
+			Command: Command{Argv: []string{"true"}},
+			Repo:    "cfgrepo",
+			Output:  "dconf/dconf.reg-${HOST}",
+		}},
+	}
+	cfg, err := Build([]File{Defaults(), layer}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Backups) != 1 {
+		t.Fatalf("expected 1 backup, got %d", len(cfg.Backups))
+	}
+	if got := cfg.Backups[0].Output; got != "/home/u/cfg/dconf/dconf.reg-ibra" {
+		t.Errorf("backup output not expanded under repo root: %q", got)
 	}
 }

@@ -6,9 +6,9 @@ Guidance for AI agents and contributors working in this repository.
 
 `rc` is a workstation orchestrator: a Go rewrite of a large Bash script that
 synchronizes YADM and Git repositories, manages dotfile symlinks, runs backups
-and OS/tool updates, emits Waybar status, and runs diagnostics. The original
-behavior and the rationale for each decision are recorded in `rc-rewrite.md`;
-read it before making non-trivial changes.
+and OS/tool updates, emits Waybar status, and runs diagnostics. User-facing
+behavior is documented in `README.md`; read it before making non-trivial
+changes.
 
 ## Module and dependencies
 
@@ -61,6 +61,12 @@ internal/migrate/       legacy line-based config -> TOML overlays (migration onl
 - **Config is data.** Built-in defaults live in `internal/config/defaults.go` as
   structured data. The runtime never parses the legacy formats; only
   `internal/migrate` understands them.
+- **Keep `examples/config.toml` in sync.** It is the user-facing reference for the
+  full config schema. Whenever you change the config model (`internal/config`
+  types, defaults, validation, expansion, or merge behavior) or add/rename a
+  field, root, or task type, update `examples/config.toml` in the same change so
+  it stays valid and demonstrates the new shape. After editing it, confirm it
+  still resolves with `rc config validate --config examples/config.toml`.
 - **Path expansion.** Only `~` at the start and `${HOME}`, `${HOST}`, `${GOPATH}`
   (any position) are expanded, and only in path fields. Command bodies
   (`argv`/`shell`) are never expanded so shell `${VAR}` survives. An unset
