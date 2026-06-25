@@ -126,8 +126,9 @@ imports.
 - **pre-commit** (`.pre-commit-config.yaml`): fast checks on commit (gofmt, vet,
   golangci-lint, go mod tidy) and the test suite on pre-push.
 - **GoReleaser** (`.goreleaser.yaml`, v2): builds linux/darwin amd64+arm64,
-  archives, and checksums. Validate with `goreleaser check`; dry-run with
-  `goreleaser release --snapshot --clean`.
+  archives, checksums, and publishes a Homebrew cask to `chmouel/homebrew-tap`
+  (needs the `HOMEBREW_TAP_GITHUB_TOKEN` secret at release time). Validate with
+  `goreleaser check`; dry-run with `goreleaser release --snapshot --clean`.
 - **GitHub Actions**: `.github/workflows/ci.yml` (lint, test matrix on
   ubuntu+macos with race/coverage, GoReleaser config check) runs on push/PR;
   `.github/workflows/release.yml` runs GoReleaser on `v*` tags.
