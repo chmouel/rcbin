@@ -1,6 +1,7 @@
 package linker
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -13,10 +14,17 @@ import (
 
 func newTestLinker(t *testing.T, home string, dryRun bool) (*Linker, *runner.Fake) {
 	t.Helper()
-	fake := runner.NewFake()
-	rep := output.New(os.Stdout, os.Stderr, false, false)
-	l := New(fake, rep, home, filepath.Join(home, ".config", "rc", "manifest.json"), dryRun)
+	l, fake, _ := newBufferedTestLinker(t, home, dryRun, false)
 	return l, fake
+}
+
+func newBufferedTestLinker(t *testing.T, home string, dryRun, verbose bool) (*Linker, *runner.Fake, *bytes.Buffer) {
+	t.Helper()
+	fake := runner.NewFake()
+	var out, errBuf bytes.Buffer
+	rep := output.New(&out, &errBuf, false, verbose)
+	l := New(fake, rep, home, filepath.Join(home, ".config", "rc", "manifest.json"), dryRun)
+	return l, fake, &errBuf
 }
 
 func writeFile(t *testing.T, p, content string) {
@@ -50,6 +58,58 @@ func TestLinkNewAndStaleRemoval(t *testing.T) {
 	}
 	if _, err := os.Lstat(target); !os.IsNotExist(err) {
 		t.Errorf("stale managed link should be removed, got err=%v", err)
+	}
+}
+
+func TestVerboseRealApplyReportsActions(t *testing.T) {
+	home := t.TempDir()
+	src := filepath.Join(home, "src", "file")
+	writeFile(t, src, "x")
+	target := filepath.Join(home, ".config", "file")
+
+	l, _, errBuf := newBufferedTestLinker(t, home, false, true)
+	if err := l.Apply(context.Background(), []Plan{{Source: src, Target: target, Kind: "link"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := errBuf.String()
+	if !strings.Contains(got, "link plan: 1 item(s)") {
+		t.Fatalf("verbose output missing plan summary:\n%s", got)
+	}
+	if !strings.Contains(got, "created link "+target+" -> "+src) {
+		t.Fatalf("verbose output missing created link action:\n%s", got)
+	}
+
+	errBuf.Reset()
+	if err := l.Apply(context.Background(), []Plan{{Source: src, Target: target, Kind: "link"}}); err != nil {
+		t.Fatal(err)
+	}
+	got = errBuf.String()
+	if !strings.Contains(got, "refreshed link "+target+" -> "+src) {
+		t.Fatalf("verbose output missing refreshed link action:\n%s", got)
+	}
+
+	errBuf.Reset()
+	if err := l.Apply(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	got = errBuf.String()
+	if !strings.Contains(got, "removed stale link "+target) {
+		t.Fatalf("verbose output missing stale removal action:\n%s", got)
+	}
+}
+
+func TestNonVerboseRealApplyStaysQuiet(t *testing.T) {
+	home := t.TempDir()
+	src := filepath.Join(home, "src", "file")
+	writeFile(t, src, "x")
+	target := filepath.Join(home, ".config", "file")
+
+	l, _, errBuf := newBufferedTestLinker(t, home, false, false)
+	if err := l.Apply(context.Background(), []Plan{{Source: src, Target: target, Kind: "link"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := errBuf.String(); got != "" {
+		t.Fatalf("non-verbose real apply should stay quiet, got:\n%s", got)
 	}
 }
 
@@ -132,6 +192,53 @@ func TestRelativeLink(t *testing.T) {
 	}
 	if dest != "../src/file" {
 		t.Errorf("unexpected relative target %q", dest)
+	}
+}
+
+func TestNestedTargetUnderManagedSymlinkedParent(t *testing.T) {
+	home := t.TempDir()
+	rcRoot := filepath.Join(home, ".local", "share", "rc")
+	parentSource := filepath.Join(rcRoot, "aichat")
+	childSource := filepath.Join(rcRoot, "ai", "prompts")
+	if err := os.MkdirAll(parentSource, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(childSource, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	parentTarget := filepath.Join(home, ".config", "aichat")
+	childTarget := filepath.Join(parentTarget, "roles")
+
+	l, _ := newTestLinker(t, home, false)
+	if err := l.Apply(context.Background(), []Plan{
+		{Source: childSource, Target: childTarget, Kind: "link"},
+		{Source: parentSource, Target: parentTarget, Kind: "link"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	parentDest, err := os.Readlink(parentTarget)
+	if err != nil {
+		t.Fatalf("parent target should be a symlink: %v", err)
+	}
+	if filepath.IsAbs(parentDest) {
+		t.Fatalf("parent link should be relative, got %q", parentDest)
+	}
+
+	physicalChild := filepath.Join(parentSource, "roles")
+	childDest, err := os.Readlink(physicalChild)
+	if err != nil {
+		t.Fatalf("child target should be created inside the physical parent: %v", err)
+	}
+	if childDest != "../ai/prompts" {
+		t.Fatalf("child link target = %q, want ../ai/prompts", childDest)
+	}
+	resolved, err := filepath.EvalSymlinks(childTarget)
+	if err != nil {
+		t.Fatalf("child target should resolve through managed parent: %v", err)
+	}
+	if resolved != childSource {
+		t.Fatalf("child target resolves to %q, want %q", resolved, childSource)
 	}
 }
 

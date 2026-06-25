@@ -1,6 +1,9 @@
 package linker
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
 // FileSystem wraps the filesystem operations the linker needs, allowing
 // deterministic tests. The production implementation delegates to the os
@@ -11,6 +14,7 @@ type FileSystem interface {
 	Symlink(oldname, newname string) error
 	Remove(name string) error
 	MkdirAll(path string, perm os.FileMode) error
+	EvalSymlinks(path string) (string, error)
 }
 
 // OSFS is the production FileSystem backed by the os package.
@@ -21,6 +25,7 @@ func (OSFS) Readlink(name string) (string, error)         { return os.Readlink(n
 func (OSFS) Symlink(oldname, newname string) error        { return os.Symlink(oldname, newname) }
 func (OSFS) Remove(name string) error                     { return os.Remove(name) }
 func (OSFS) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+func (OSFS) EvalSymlinks(path string) (string, error)     { return filepath.EvalSymlinks(path) }
 
 // isSymlink reports whether info describes a symbolic link.
 func isSymlink(info os.FileInfo) bool {

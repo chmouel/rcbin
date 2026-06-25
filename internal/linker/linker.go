@@ -82,11 +82,13 @@ func (l *Linker) Apply(ctx context.Context, plans []Plan) error {
 	if err := detectConflicts(plans); err != nil {
 		return err
 	}
+	plans = parentFirst(plans)
 
 	old, err := LoadManifest(l.ManifestPath)
 	if err != nil {
 		return fmt.Errorf("loading manifest: %w", err)
 	}
+	l.Rep.Debugf("link plan: %d item(s) (%s); manifest has %d managed link(s)", len(plans), planKindSummary(plans), len(old.Links))
 	next := &Manifest{Links: map[string]string{}}
 
 	var errs []error
@@ -110,6 +112,31 @@ func (l *Linker) Apply(ctx context.Context, plans []Plan) error {
 	return nil
 }
 
+func parentFirst(plans []Plan) []Plan {
+	ordered := make([]Plan, 0, len(plans))
+	for _, p := range plans {
+		insertAt := len(ordered)
+		for i, existing := range ordered {
+			if pathContains(p.Target, existing.Target) {
+				insertAt = i
+				break
+			}
+		}
+		ordered = append(ordered, Plan{})
+		copy(ordered[insertAt+1:], ordered[insertAt:])
+		ordered[insertAt] = p
+	}
+	return ordered
+}
+
+func pathContains(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil || rel == "." || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
 func detectConflicts(plans []Plan) error {
 	bySource := map[string]string{}
 	for _, p := range plans {
@@ -119,6 +146,38 @@ func detectConflicts(plans []Plan) error {
 		bySource[p.Target] = p.Source
 	}
 	return nil
+}
+
+func planKindSummary(plans []Plan) string {
+	var links, bins, completions, other int
+	for _, p := range plans {
+		switch planKind(p) {
+		case "link":
+			links++
+		case "bin":
+			bins++
+		case "completion":
+			completions++
+		default:
+			other++
+		}
+	}
+	parts := []string{
+		fmt.Sprintf("links=%d", links),
+		fmt.Sprintf("bins=%d", bins),
+		fmt.Sprintf("completions=%d", completions),
+	}
+	if other > 0 {
+		parts = append(parts, fmt.Sprintf("other=%d", other))
+	}
+	return strings.Join(parts, " ")
+}
+
+func planKind(p Plan) string {
+	if p.Kind != "" {
+		return p.Kind
+	}
+	return "link"
 }
 
 func (l *Linker) linkOne(ctx context.Context, p Plan, next *Manifest) error {
@@ -137,10 +196,12 @@ func (l *Linker) linkOne(ctx context.Context, p Plan, next *Manifest) error {
 
 	// Inspect the target. A real (non-symlink) file or directory is never
 	// replaced; an existing symlink is refreshed.
+	refresh := false
 	if info, err := l.FS.Lstat(p.Target); err == nil {
 		if !isSymlink(info) {
 			return fmt.Errorf("%s exists and is not a symlink; not overriding", p.Target)
 		}
+		refresh = true
 		if l.DryRun {
 			l.Rep.Infof("[dry-run] would refresh link %s -> %s", p.Target, p.Source)
 			next.Links[p.Target] = p.Source
@@ -151,9 +212,8 @@ func (l *Linker) linkOne(ctx context.Context, p Plan, next *Manifest) error {
 		}
 	}
 
-	source := l.linkSource(p.Target, p.Source)
-
 	if l.DryRun {
+		source := l.linkSource(p.Target, p.Source)
 		l.Rep.Infof("[dry-run] would link %s -> %s", p.Target, source)
 		next.Links[p.Target] = p.Source
 		return nil
@@ -162,8 +222,14 @@ func (l *Linker) linkOne(ctx context.Context, p Plan, next *Manifest) error {
 	if err := l.ensureParent(ctx, p.Target, privileged); err != nil {
 		return err
 	}
+	source := l.linkSource(p.Target, p.Source)
 	if err := l.symlink(ctx, source, p.Target, privileged); err != nil {
 		return err
+	}
+	if refresh {
+		l.Rep.Debugf("refreshed %s %s -> %s", planKind(p), p.Target, p.Source)
+	} else {
+		l.Rep.Debugf("created %s %s -> %s", planKind(p), p.Target, p.Source)
 	}
 	next.Links[p.Target] = p.Source
 	return nil
@@ -176,12 +242,15 @@ func (l *Linker) removeStale(ctx context.Context, old, next *Manifest) {
 		}
 		info, err := l.FS.Lstat(target)
 		if err != nil {
+			l.Rep.Debugf("stale link already absent: %s", target)
 			continue // already gone
 		}
 		if !isSymlink(info) {
+			l.Rep.Debugf("stale manifest entry is not a symlink, leaving: %s", target)
 			continue // no longer a link we own; leave it
 		}
 		if !l.linkMatchesSource(target, old.Links[target]) {
+			l.Rep.Debugf("stale manifest entry was repointed, leaving: %s", target)
 			continue // user repointed the symlink; leave it
 		}
 		if l.DryRun {
@@ -198,7 +267,11 @@ func (l *Linker) removeStale(ctx context.Context, old, next *Manifest) {
 
 // linkSource prefers a relative link target when one can be computed.
 func (l *Linker) linkSource(target, source string) string {
-	rel, err := filepath.Rel(filepath.Dir(target), source)
+	parent := filepath.Dir(target)
+	if resolved, err := l.FS.EvalSymlinks(parent); err == nil {
+		parent = resolved
+	}
+	rel, err := filepath.Rel(parent, source)
 	if err != nil {
 		return source
 	}
