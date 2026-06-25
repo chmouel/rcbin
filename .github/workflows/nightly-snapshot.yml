@@ -1,0 +1,114 @@
+name: Nightly Snapshot
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: Snapshot release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Detect changes since nightly
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          head_sha="$(git rev-parse HEAD)"
+          nightly_sha="$(git ls-remote --tags origin refs/tags/nightly | awk '{print $1}' | head -n1)"
+
+          echo "head_sha=${head_sha}" >>"${GITHUB_OUTPUT}"
+          echo "nightly_sha=${nightly_sha}" >>"${GITHUB_OUTPUT}"
+
+          if [[ -n "${nightly_sha}" && "${head_sha}" == "${nightly_sha}" ]]; then
+            echo "changed=false" >>"${GITHUB_OUTPUT}"
+            echo "main is already published as nightly (${head_sha})." >>"${GITHUB_STEP_SUMMARY}"
+          else
+            echo "changed=true" >>"${GITHUB_OUTPUT}"
+            echo "main has changes since nightly; building ${head_sha}." >>"${GITHUB_STEP_SUMMARY}"
+          fi
+
+          git tag -d nightly >/dev/null 2>&1 || true
+
+      - uses: actions/setup-go@v5
+        if: steps.changes.outputs.changed == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build snapshot archives
+        if: steps.changes.outputs.changed == 'true'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PERSO_TOKEN: ${{ secrets.GH_PERSO_TOKEN || '' }}
+
+      - name: Publish nightly prerelease
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ steps.changes.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          notes_file="${RUNNER_TEMP}/nightly-notes.md"
+          cat >"${notes_file}" <<EOF
+          Automated nightly snapshot from main.
+
+          Commit: ${HEAD_SHA}
+          Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
+
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release edit nightly \
+              --title "Nightly Snapshot" \
+              --notes-file "${notes_file}" \
+              --prerelease \
+              --target "${HEAD_SHA}"
+
+            gh release view nightly --json assets --jq '.assets[].name' |
+              while IFS= read -r asset; do
+                [[ -z "${asset}" ]] && continue
+                gh release delete-asset nightly "${asset}" --yes
+              done
+
+            gh release upload nightly dist/*.tar.gz dist/checksums.txt
+          else
+            gh release create nightly dist/*.tar.gz dist/checksums.txt \
+              --title "Nightly Snapshot" \
+              --notes-file "${notes_file}" \
+              --prerelease \
+              --latest=false \
+              --target "${HEAD_SHA}"
+          fi
+
+      - name: Move nightly marker
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          HEAD_SHA: ${{ steps.changes.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly "${HEAD_SHA}"
+          git push --force origin refs/tags/nightly
