@@ -235,7 +235,12 @@ func (d *Doctor) print() Summary {
 			d.Rep.Infof("%s: %s", r.Name, r.Detail)
 		}
 	}
-	d.Rep.Println(fmt.Sprintf("\nSummary: %d passed, %d warnings, %d failures, %d skipped",
-		sum.Pass, sum.Warn, sum.Fail, sum.Skip))
+	d.Rep.Println("")
+	d.Rep.Println(fmt.Sprintf("%s %s  %s  %s  %s",
+		d.Rep.Bold("Summary:"),
+		d.Rep.Good(fmt.Sprintf("%d passed", sum.Pass)),
+		d.Rep.Caution(fmt.Sprintf("%d warnings", sum.Warn)),
+		d.Rep.Bad(fmt.Sprintf("%d failures", sum.Fail)),
+		d.Rep.Dim(fmt.Sprintf("%d skipped", sum.Skip))))
 	return sum
 }

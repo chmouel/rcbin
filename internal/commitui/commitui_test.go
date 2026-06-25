@@ -75,6 +75,33 @@ func TestMagitUsesTtyFrameAndRepoDir(t *testing.T) {
 	}
 }
 
+func TestShowStatusPreservesFirstLineColumn(t *testing.T) {
+	fake := runner.NewFake()
+	// Worktree-modified files have a leading-space staged column (" M path").
+	// The first line must keep that column instead of losing its first char.
+	fake.AddStub("git -C /repo status --short",
+		runner.Result{Stdout: " M early-init.el\n M init.el\n"}, nil)
+	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
+	var errBuf strings.Builder
+	a := &Adapter{
+		R:   fake,
+		Rep: output.New(io.Discard, &errBuf, false, false),
+	}
+	a.showStatus(context.Background(), "/repo")
+	got := errBuf.String()
+	if !strings.Contains(got, "early-init.el") {
+		t.Fatalf("first line mangled, got %q", got)
+	}
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if !strings.HasSuffix(line, "early-init.el") && !strings.HasSuffix(line, "init.el") {
+			t.Fatalf("unexpected status line %q", line)
+		}
+		if !strings.Contains(line, " M ") {
+			t.Errorf("status column lost on line %q", line)
+		}
+	}
+}
+
 func TestBackReturnsToMenu(t *testing.T) {
 	fake := runner.NewFake()
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)

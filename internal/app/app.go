@@ -79,9 +79,12 @@ func Execute(ctx context.Context, args []string, deps Deps) int {
 	return 2
 }
 
-// newReporter constructs the Reporter from the global flags.
+// newReporter constructs the Reporter from the global flags. Color is enabled
+// only when the user has not passed --no-color, NO_COLOR is unset, and stderr is
+// a terminal, so piped or redirected output stays plain.
 func newReporter(g *globals, deps Deps) *output.Reporter {
-	return output.New(deps.Stdout, deps.Stderr, !g.noColor, g.verbose)
+	color := output.ColorFor(deps.Stderr, g.noColor)
+	return output.New(deps.Stdout, deps.Stderr, color, g.verbose)
 }
 
 // loadConfig loads the layered configuration honoring --config and --host.

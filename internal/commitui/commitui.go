@@ -43,17 +43,14 @@ func (a *Adapter) Handle(ctx context.Context, target config.RepoTarget, name str
 	dir := target.Path
 	before := repo.Head(ctx, a.R, dir)
 
-	a.Rep.Println("======================")
-	a.Rep.Println(name)
-	a.Rep.Println("======================")
+	a.Rep.Rule(name)
 
 	// Loop the action menu so [b]ack from the continue prompt re-displays it.
 menu:
 	for {
 		a.showStatus(ctx, dir)
 
-		choice, err := a.Pr.Choice(
-			fmt.Sprintf("[%s] [M]agit [L]azygit [s]kip [A]utoAI [C]ommit directly [q]uit? ", name), 'l')
+		choice, err := a.Pr.Choice(a.menuPrompt(name), 'l')
 		if err != nil {
 			return false, err
 		}
@@ -85,7 +82,7 @@ menu:
 		// Confirm before syncing, mirroring the original rc which prompts
 		// "Would you like to continue?" after the commit tool and quits on "n".
 		// [b]ack returns to the action menu for another pass.
-		cont, err := a.Pr.Choice("Would you like to continue? ([Y]es/[n]o/[b]ack) ", 'y')
+		cont, err := a.Pr.Choice(a.continuePrompt(), 'y')
 		if err != nil {
 			return false, err
 		}
@@ -125,9 +122,65 @@ func (a *Adapter) YadmDirty(ctx context.Context, stateDir string) error {
 
 func (a *Adapter) showStatus(ctx context.Context, dir string) {
 	res, _ := a.R.Run(ctx, runner.Spec{Name: "git", Args: []string{"-C", dir, "status", "--short"}, Dir: dir})
-	if out := strings.TrimSpace(res.Stdout); out != "" {
-		a.Rep.Println(out)
+	// Trim only trailing newlines: git's short format encodes the staged column
+	// as the first character, which may be a space (e.g. " M path"), so trimming
+	// leading whitespace would mangle the first line.
+	out := strings.Trim(res.Stdout, "\n")
+	if strings.TrimSpace(out) == "" {
+		return
 	}
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		a.Rep.Println(a.colorStatusLine(line))
+	}
+}
+
+// menuPrompt renders the action menu with the hotkey letters highlighted and
+// the surrounding labels dimmed. The default action (lazygit) is accented.
+func (a *Adapter) menuPrompt(name string) string {
+	item := func(key, label string) string {
+		return a.Rep.Key("["+key+"]") + a.Rep.Dim(label)
+	}
+	entries := strings.Join([]string{
+		item("m", "agit"),
+		a.Rep.Accent("[l]azygit"),
+		item("s", "kip"),
+		item("a", "i"),
+		item("c", "ommit"),
+		item("q", "uit"),
+	}, " ")
+	return fmt.Sprintf("%s %s  %s ", a.Rep.Arrow(), a.Rep.Bold(name), entries)
+}
+
+// continuePrompt renders the post-action confirmation with highlighted keys.
+func (a *Adapter) continuePrompt() string {
+	entries := strings.Join([]string{
+		a.Rep.Accent("[Y]es"),
+		a.Rep.Key("[n]") + a.Rep.Dim("o"),
+		a.Rep.Key("[b]") + a.Rep.Dim("ack"),
+	}, " ")
+	return fmt.Sprintf("%s %s %s ", a.Rep.Arrow(), a.Rep.Dim("continue?"), entries)
+}
+
+// colorStatusLine colorizes a `git status --short` line: the staged column
+// (index) in green, the worktree column in red, and untracked entries dimmed.
+func (a *Adapter) colorStatusLine(line string) string {
+	if !a.Rep.Color() || len(line) < 3 {
+		return line
+	}
+	x, y, rest := line[0:1], line[1:2], line[3:]
+	if x == "?" && y == "?" {
+		return a.Rep.Dim("?? " + rest)
+	}
+	if x != " " {
+		x = a.Rep.Good(x)
+	}
+	if y != " " {
+		y = a.Rep.Bad(y)
+	}
+	return x + y + " " + rest
 }
 
 // emacs opens fn (e.g. magit-status) for dir. With a reachable Emacs server it

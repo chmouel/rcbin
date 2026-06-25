@@ -168,7 +168,7 @@ func (s *Syncer) syncClean(ctx context.Context, t config.RepoTarget, name string
 
 	after := Head(ctx, s.R, t.Path)
 	r.headChanged = before != after
-	r.lines = append(r.lines, checkmarkLine(name))
+	r.lines = append(r.lines, s.Rep.SuccessLine("%s has been synchronized", name))
 	return r
 }
 
@@ -227,10 +227,6 @@ func commandSpec(c config.Command, dir, shell string) runner.Spec {
 		return runner.Spec{Name: shell, Args: []string{"-c", c.Shell}, Dir: dir}
 	}
 	return runner.Spec{Name: c.Argv[0], Args: c.Argv[1:], Dir: dir}
-}
-
-func checkmarkLine(name string) string {
-	return fmt.Sprintf("✓ %s has been synchronized", name)
 }
 
 func canonical(path string) string {
