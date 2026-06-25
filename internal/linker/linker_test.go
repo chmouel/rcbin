@@ -255,8 +255,12 @@ func TestNestedTargetUnderManagedSymlinkedParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("child target should resolve through managed parent: %v", err)
 	}
-	if resolved != childSource {
-		t.Fatalf("child target resolves to %q, want %q", resolved, childSource)
+	expectedSource, err := filepath.EvalSymlinks(childSource)
+	if err != nil {
+		t.Fatalf("child source should resolve: %v", err)
+	}
+	if resolved != expectedSource {
+		t.Fatalf("child target resolves to %q, want %q", resolved, expectedSource)
 	}
 }
 
