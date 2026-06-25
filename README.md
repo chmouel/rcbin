@@ -46,6 +46,11 @@ making any changes.
 ```
 
 - All mutating commands honor `--dry-run`.
+- For a dirty repository the prompt reads a single keypress (no Enter needed):
+  `m` Magit, `l` lazygit (default), `s` skip, `a` aicommit, `c` direct commit,
+  `q` quit. After an action rc asks `Would you like to continue? ([Y]es/[n]o/[b]ack)`
+  before pulling and pushing; `b` returns to the menu, and `n`, `q`, or `Ctrl+C`
+  aborts the run cleanly.
 - In `--non-interactive` mode, dirty or conflicted repositories become
   actionable errors while clean repositories continue.
 - Machine output (such as `status --format waybar`) is written to stdout; logs

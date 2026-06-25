@@ -3,6 +3,7 @@ package commitui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -18,12 +19,108 @@ type fakePrompter struct{ key byte }
 
 func (f fakePrompter) Choice(string, byte) (byte, error) { return f.key, nil }
 
+// seqPrompter returns successive keys, one per Choice call, so a test can drive
+// the action prompt and the follow-up "continue?" prompt independently.
+type seqPrompter struct {
+	keys []byte
+	i    int
+}
+
+func (s *seqPrompter) Choice(string, byte) (byte, error) {
+	if s.i >= len(s.keys) {
+		return 0, fmt.Errorf("seqPrompter: no key for call %d", s.i)
+	}
+	k := s.keys[s.i]
+	s.i++
+	return k, nil
+}
+
 func newAdapter(t *testing.T, key byte) (*Adapter, *runner.Fake) {
 	t.Helper()
 	fake := runner.NewFake()
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
 	rep := output.New(os.Stdout, os.Stderr, false, false)
 	return &Adapter{R: fake, Rep: rep, Pr: fakePrompter{key: key}}, fake
+}
+
+func TestMagitUsesTtyFrameAndRepoDir(t *testing.T) {
+	fake := runner.NewFake()
+	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
+	fake.AddStub("pgrep", runner.Result{Stdout: "123\n"}, nil) // emacs server present
+	a := &Adapter{
+		R:   fake,
+		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Pr:  &seqPrompter{keys: []byte{'m', 'n'}}, // magit, then quit before pull/push
+	}
+	if _, err := a.Handle(context.Background(), config.RepoTarget{Path: "/repo"}, "repo"); !errors.Is(err, repo.ErrAbort) {
+		t.Fatalf("expected ErrAbort after declining, got %v", err)
+	}
+	var emacsLine string
+	for _, line := range fake.CallLines() {
+		if strings.HasPrefix(line, "emacsclient") {
+			emacsLine = line
+		}
+	}
+	if emacsLine == "" {
+		t.Fatalf("expected an emacsclient invocation, calls: %v", fake.CallLines())
+	}
+	if !strings.Contains(emacsLine, " -t ") {
+		t.Errorf("emacsclient must open a tty frame (-t), got %q", emacsLine)
+	}
+	if strings.Contains(emacsLine, "-u") {
+		t.Errorf("emacsclient must not suppress the frame with -u, got %q", emacsLine)
+	}
+	if !strings.Contains(emacsLine, `"/repo/"`) {
+		t.Errorf("emacsclient must bind default-directory to the repo, got %q", emacsLine)
+	}
+}
+
+func TestBackReturnsToMenu(t *testing.T) {
+	fake := runner.NewFake()
+	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
+	a := &Adapter{
+		R:   fake,
+		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		// lazygit, back to menu, skip out.
+		Pr: &seqPrompter{keys: []byte{'l', 'b', 's'}},
+	}
+	changed, err := a.Handle(context.Background(), config.RepoTarget{Path: "/repo"}, "repo")
+	if err != nil {
+		t.Fatalf("back then skip should succeed, got %v", err)
+	}
+	if changed {
+		t.Error("skip after back should report no change")
+	}
+	var lazygitRuns int
+	for _, line := range fake.CallLines() {
+		if strings.Contains(line, "lazygit") {
+			lazygitRuns++
+		}
+		if strings.Contains(line, "pull") || strings.Contains(line, "push") {
+			t.Errorf("skip must not pull or push, saw %q", line)
+		}
+	}
+	if lazygitRuns != 1 {
+		t.Errorf("expected lazygit to run once before going back, ran %d times", lazygitRuns)
+	}
+}
+
+func TestContinueNoAborts(t *testing.T) {
+	fake := runner.NewFake()
+	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
+	a := &Adapter{
+		R:   fake,
+		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Pr:  &seqPrompter{keys: []byte{'c', 'n'}}, // commit, then decline to continue
+	}
+	if _, err := a.Handle(context.Background(), config.RepoTarget{Path: "/repo"}, "repo"); !errors.Is(err, repo.ErrAbort) {
+		t.Fatalf("declining to continue should abort with repo.ErrAbort, got %v", err)
+	}
+	for _, line := range fake.CallLines() {
+		if strings.Contains(line, "pull") || strings.Contains(line, "push") {
+			t.Errorf("aborting must not pull or push, saw %q", line)
+		}
+	}
 }
 
 func TestQuitAborts(t *testing.T) {

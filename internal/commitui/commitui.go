@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/term"
@@ -45,39 +46,57 @@ func (a *Adapter) Handle(ctx context.Context, target config.RepoTarget, name str
 	a.Rep.Println("======================")
 	a.Rep.Println(name)
 	a.Rep.Println("======================")
-	a.showStatus(ctx, dir)
 
-	choice, err := a.Pr.Choice(
-		fmt.Sprintf("[%s] [M]agit [L]azygit [s]kip [A]utoAI [C]ommit directly [q]uit? ", name), 'l')
-	if err != nil {
-		return false, err
+	// Loop the action menu so [b]ack from the continue prompt re-displays it.
+menu:
+	for {
+		a.showStatus(ctx, dir)
+
+		choice, err := a.Pr.Choice(
+			fmt.Sprintf("[%s] [M]agit [L]azygit [s]kip [A]utoAI [C]ommit directly [q]uit? ", name), 'l')
+		if err != nil {
+			return false, err
+		}
+
+		switch choice {
+		case 'q':
+			return false, repo.ErrAbort
+		case 's':
+			a.Rep.Infof("skipping %s", name)
+			return false, nil
+		case 'm':
+			if err := a.emacs(ctx, dir, "magit-status"); err != nil {
+				return false, err
+			}
+		case 'a':
+			if err := a.run(ctx, dir, a.aicommit(), "-a"); err != nil {
+				return false, err
+			}
+		case 'c':
+			if err := a.runInteractive(ctx, dir, "git", "commit", "-s", "-a"); err != nil {
+				return false, err
+			}
+		default: // 'l' and anything else
+			if err := a.runInteractive(ctx, dir, a.lazygit()); err != nil {
+				return false, err
+			}
+		}
+
+		// Confirm before syncing, mirroring the original rc which prompts
+		// "Would you like to continue?" after the commit tool and quits on "n".
+		// [b]ack returns to the action menu for another pass.
+		cont, err := a.Pr.Choice("Would you like to continue? ([Y]es/[n]o/[b]ack) ", 'y')
+		if err != nil {
+			return false, err
+		}
+		switch cont {
+		case 'n', 'q':
+			return repo.Head(ctx, a.R, dir) != before, repo.ErrAbort
+		case 'b':
+			continue menu
+		}
+		break menu
 	}
-
-	switch choice {
-	case 'q':
-		return false, repo.ErrAbort
-	case 's':
-		a.Rep.Infof("skipping %s", name)
-		return false, nil
-	case 'm':
-		if err := a.emacs(ctx, "magit-status"); err != nil {
-			return false, err
-		}
-	case 'a':
-		if err := a.run(ctx, dir, a.aicommit(), "-a"); err != nil {
-			return false, err
-		}
-	case 'c':
-		if err := a.runInteractive(ctx, dir, "git", "commit", "-s", "-a"); err != nil {
-			return false, err
-		}
-	default: // 'l' and anything else
-		if err := a.runInteractive(ctx, dir, a.lazygit()); err != nil {
-			return false, err
-		}
-	}
-
-	// Sync after the interactive commit. If the user left local changes (e.g.
 	// quit lazygit without committing everything), a rebase pull cannot run, so
 	// the pull is best-effort there and only warns instead of aborting the run,
 	// mirroring the legacy `git pull -q || true`. A pull failure on a clean tree
@@ -111,13 +130,23 @@ func (a *Adapter) showStatus(ctx context.Context, dir string) {
 	}
 }
 
-func (a *Adapter) emacs(ctx context.Context, fn string) error {
+// emacs opens fn (e.g. magit-status) for dir. With a reachable Emacs server it
+// creates a frame on the current terminal (emacsclient -t) so the UI appears
+// where rc runs rather than in a pre-existing GUI frame; otherwise it starts a
+// terminal Emacs. default-directory is bound to dir so magit acts on this repo.
+func (a *Adapter) emacs(ctx context.Context, dir, fn string) error {
+	dd := dir
+	if dd != "" && !strings.HasSuffix(dd, "/") {
+		dd += "/"
+	}
+	expr := fmt.Sprintf("(let ((default-directory %s)) (%s))", strconv.Quote(dd), fn)
+
 	if _, ok := a.R.LookPath("emacsclient"); ok {
 		if _, err := a.R.Run(ctx, runner.Spec{Name: "pgrep", Args: []string{"-i", "emacs"}}); err == nil {
-			return a.runInteractive(ctx, "", "emacsclient", "-u", "-e", "("+fn+")")
+			return a.runInteractive(ctx, dir, "emacsclient", "-t", "-e", expr)
 		}
 	}
-	return a.runInteractive(ctx, "", "emacs", "-f", fn)
+	return a.runInteractive(ctx, dir, "emacs", "-nw", "--eval", expr)
 }
 
 func (a *Adapter) run(ctx context.Context, dir, name string, args ...string) error {
