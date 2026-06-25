@@ -10,6 +10,14 @@ and agents are in [`AGENTS.md`](./AGENTS.md).
 
 ## Install
 
+With [Homebrew](https://brew.sh):
+
+```bash
+brew install chmouel/tap/rc
+```
+
+Or build from source:
+
 ```bash
 go build -o rc ./cmd/rc
 # move rc onto your PATH, e.g.
@@ -28,6 +36,7 @@ rc doctor [--offline]
 rc run
 rc config validate
 rc migrate --legacy-root PATH --output-root PATH
+rc completion [bash|zsh|fish|powershell]
 ```
 
 Running `rc` with no arguments prints help and exits successfully without
@@ -71,6 +80,22 @@ rc status --format waybar    # JSON for a Waybar custom module
 rc update                    # run system/tool update tasks
 rc doctor                    # check the environment
 ```
+
+### Shell completion
+
+`rc` ships shell completion via Cobra. Load it for your shell, for example:
+
+```bash
+# bash (current session)
+source <(rc completion bash)
+# zsh (current session)
+source <(rc completion zsh)
+# fish
+rc completion fish | source
+```
+
+Run `rc completion <shell> --help` for instructions on installing it
+permanently. The Homebrew formula installs completions automatically.
 
 ## Configuration
 
@@ -185,3 +210,7 @@ goreleaser release --snapshot --clean
 ```
 
 See [`AGENTS.md`](./AGENTS.md) for architecture and conventions.
+
+## License
+
+Released under the [MIT License](./LICENSE). © 2026 Chmouel Boudjnah.
