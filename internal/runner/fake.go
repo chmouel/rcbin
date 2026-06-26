@@ -9,9 +9,10 @@ import (
 
 // Call records a single invocation handled by Fake.
 type Call struct {
-	Name string
-	Args []string
-	Dir  string
+	Name        string
+	Args        []string
+	Dir         string
+	Interactive bool
 }
 
 // Stub describes a canned response keyed by a command-line prefix match.
@@ -59,7 +60,7 @@ func (f *Fake) LookPath(name string) (string, bool) {
 func (f *Fake) Run(_ context.Context, spec Spec) (Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.Calls = append(f.Calls, Call{Name: spec.Name, Args: append([]string{}, spec.Args...), Dir: spec.Dir})
+	f.Calls = append(f.Calls, Call{Name: spec.Name, Args: append([]string{}, spec.Args...), Dir: spec.Dir, Interactive: spec.Interactive})
 
 	line := spec.Name
 	if len(spec.Args) > 0 {
@@ -87,6 +88,17 @@ func (f *Fake) CallLines() []string {
 			line += " " + strings.Join(c.Args, " ")
 		}
 		out = append(out, line)
+	}
+	return out
+}
+
+// CallRecords returns a snapshot of recorded invocations.
+func (f *Fake) CallRecords() []Call {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]Call, len(f.Calls))
+	for i, c := range f.Calls {
+		out[i] = Call{Name: c.Name, Args: append([]string{}, c.Args...), Dir: c.Dir, Interactive: c.Interactive}
 	}
 	return out
 }
