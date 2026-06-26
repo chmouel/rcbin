@@ -210,7 +210,7 @@ func TestSelfUpdateSymlinkInstallWritesHostCompletion(t *testing.T) {
 	resolvedRepoRoot := filepath.Dir(filepath.Dir(resolvedBinary))
 
 	fake := runner.NewFake()
-	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "git@github.com:chmouel/rc.git\n"}, nil)
+	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "git@github.com:chmouel/rcbin.git\n"}, nil)
 	fake.AddStub("git -C "+resolvedRepoRoot+" status --porcelain", runner.Result{}, nil)
 	fake.AddStub("git -C "+resolvedRepoRoot+" pull --ff-only", runner.Result{}, nil)
 	fake.AddStub("make build", runner.Result{}, nil)

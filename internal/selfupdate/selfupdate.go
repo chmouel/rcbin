@@ -26,7 +26,7 @@ import (
 
 const (
 	defaultOwner   = "chmouel"
-	defaultRepo    = "rc"
+	defaultRepo    = "rcbin"
 	defaultTag     = "nightly"
 	defaultAPIBase = "https://api.github.com"
 	maxBinarySize  = 100 << 20
@@ -160,8 +160,8 @@ func (u *Updater) verifyOrigin(ctx context.Context, repoRoot string) error {
 		return fmt.Errorf("checking origin for %s: %w", repoRoot, err)
 	}
 	origin := strings.TrimSpace(res.Stdout)
-	if !isChmouelRCRemote(origin) {
-		return fmt.Errorf("%s origin %q is not github.com/chmouel/rc", repoRoot, origin)
+	if !isChmouelRCBinRemote(origin) {
+		return fmt.Errorf("%s origin %q is not github.com/chmouel/rcbin", repoRoot, origin)
 	}
 	return nil
 }
@@ -171,14 +171,14 @@ func (u *Updater) runGit(ctx context.Context, repoRoot string, args ...string) (
 	return u.R.Run(ctx, runner.Spec{Name: "git", Args: gitArgs})
 }
 
-func isChmouelRCRemote(remote string) bool {
+func isChmouelRCBinRemote(remote string) bool {
 	remote = strings.TrimSpace(remote)
 	remote = strings.TrimSuffix(remote, "/")
 	remote = strings.TrimSuffix(remote, ".git")
 
 	switch remote {
-	case "https://github.com/chmouel/rc", "http://github.com/chmouel/rc",
-		"git@github.com:chmouel/rc", "ssh://git@github.com/chmouel/rc":
+	case "https://github.com/chmouel/rcbin", "http://github.com/chmouel/rcbin",
+		"git@github.com:chmouel/rcbin", "ssh://git@github.com/chmouel/rcbin":
 		return true
 	default:
 		return false

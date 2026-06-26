@@ -7,8 +7,8 @@ your agent want to dig deeper.
 ## Getting started
 
 ```bash
-git clone https://github.com/chmouel/rc
-cd rc
+git clone https://github.com/chmouel/rcbin
+cd rcbin
 make build      # builds ./bin/rc
 make check      # gofmt + go vet + golangci-lint + tests
 ```

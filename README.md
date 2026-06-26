@@ -14,7 +14,7 @@ Conventions for contributors and agents are in [`AGENTS.md`](./AGENTS.md).
 With the nightly binary installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/chmouel/rc/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/chmouel/rcbin/main/install.sh | sh
 ```
 
 Or build from source:
@@ -90,7 +90,7 @@ rc doctor                    # check the environment
 
 `rc self-update` updates the installed binary at `~/.local/bin/rc`.
 
-- If it is a symlink to a `github.com/chmouel/rc` checkout's `bin/rc`, rc
+- If it is a symlink to a `github.com/chmouel/rcbin` checkout's `bin/rc`, rc
   refuses to continue when the checkout has local changes, then runs
   `git pull --ff-only` and `make build`.
 - If it is a regular binary, rc downloads the matching archive from the

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo=${RC_REPO:-chmouel/rc}
+repo=${RC_REPO:-chmouel/rcbin}
 tag=${RC_RELEASE_TAG:-nightly}
 base_url="https://github.com/${repo}/releases/download/${tag}"
 

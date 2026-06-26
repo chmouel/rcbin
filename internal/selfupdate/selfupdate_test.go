@@ -54,7 +54,7 @@ func TestSymlinkInstallPullsBuildsAndGeneratesCompletion(t *testing.T) {
 	resolvedRepoRoot := filepath.Dir(filepath.Dir(resolvedBinary))
 
 	fake := runner.NewFake()
-	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "git@github.com:chmouel/rc.git\n"}, nil)
+	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "git@github.com:chmouel/rcbin.git\n"}, nil)
 	fake.AddStub("git -C "+resolvedRepoRoot+" status --porcelain", runner.Result{}, nil)
 	fake.AddStub("git -C "+resolvedRepoRoot+" pull --ff-only", runner.Result{}, nil)
 	fake.AddStub("make build", runner.Result{}, nil)
@@ -112,7 +112,7 @@ func TestSymlinkInstallFailsOnLocalChanges(t *testing.T) {
 	resolvedRepoRoot := filepath.Dir(filepath.Dir(resolvedBinary))
 
 	fake := runner.NewFake()
-	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "https://github.com/chmouel/rc\n"}, nil)
+	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "https://github.com/chmouel/rcbin\n"}, nil)
 	fake.AddStub("git -C "+resolvedRepoRoot+" status --porcelain", runner.Result{Stdout: " M internal/app/commands.go\n"}, nil)
 
 	runErr := (&Updater{
@@ -151,7 +151,7 @@ func TestSymlinkInstallDryRunDoesNotPullBuildOrWriteCompletion(t *testing.T) {
 	resolvedRepoRoot := filepath.Dir(filepath.Dir(resolvedBinary))
 
 	fake := runner.NewFake()
-	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "https://github.com/chmouel/rc.git\n"}, nil)
+	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "https://github.com/chmouel/rcbin.git\n"}, nil)
 	fake.AddStub("git -C "+resolvedRepoRoot+" status --porcelain", runner.Result{}, nil)
 
 	if err := (&Updater{
@@ -170,6 +170,29 @@ func TestSymlinkInstallDryRunDoesNotPullBuildOrWriteCompletion(t *testing.T) {
 	}
 	if _, err := os.Lstat(completionPath); !os.IsNotExist(err) {
 		t.Fatalf("dry-run must not write completion, err=%v", err)
+	}
+}
+
+func TestIsChmouelRCBinRemote(t *testing.T) {
+	tests := []struct {
+		name   string
+		remote string
+		want   bool
+	}{
+		{name: "ssh origin with git suffix", remote: "git@github.com:chmouel/rcbin.git", want: true},
+		{name: "https origin", remote: "https://github.com/chmouel/rcbin", want: true},
+		{name: "http origin with trailing slash", remote: "http://github.com/chmouel/rcbin/", want: true},
+		{name: "ssh url with suffix and trailing slash", remote: "ssh://git@github.com/chmouel/rcbin.git/", want: true},
+		{name: "old repository", remote: "git@github.com:chmouel/rc.git", want: false},
+		{name: "similar repository", remote: "git@github.com:chmouel/rcbin-extra.git", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isChmouelRCBinRemote(tt.remote); got != tt.want {
+				t.Fatalf("isChmouelRCBinRemote(%q) = %v, want %v", tt.remote, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -283,7 +306,7 @@ func releaseServer(t *testing.T, archiveName string, archive []byte, checksum st
 	t.Helper()
 	mux := http.NewServeMux()
 	var serverURL string
-	mux.HandleFunc("/repos/chmouel/rc/releases/tags/nightly", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/repos/chmouel/rcbin/releases/tags/nightly", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, `{"assets":[{"name":"checksums.txt","browser_download_url":"%s/checksums.txt"},{"name":%q,"browser_download_url":"%s/archive.tar.gz"}]}`,
 			serverURL, archiveName, serverURL)
 	})

@@ -11,7 +11,7 @@ reporting an issue.
 Please report suspected vulnerabilities privately rather than opening a public
 issue:
 
-- Preferred: open a [GitHub security advisory](https://github.com/chmouel/rc/security/advisories/new)
+- Preferred: open a [GitHub security advisory](https://github.com/chmouel/rcbin/security/advisories/new)
   for this repository ("Report a vulnerability").
 - Alternatively, email <chmouel@chmouel.com>.
 

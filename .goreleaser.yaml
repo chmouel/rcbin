@@ -65,6 +65,6 @@ changelog:
 release:
   github:
     owner: chmouel
-    name: rc
+    name: rcbin
   draft: false
   prerelease: auto
