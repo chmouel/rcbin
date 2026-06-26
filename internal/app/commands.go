@@ -16,6 +16,7 @@ import (
 	"github.com/chmouel/rc/internal/maintenance"
 	"github.com/chmouel/rc/internal/output"
 	"github.com/chmouel/rc/internal/repo"
+	"github.com/chmouel/rc/internal/selfupdate"
 	"github.com/chmouel/rc/internal/yadm"
 )
 
@@ -269,6 +270,40 @@ func newUpdateCmd(g *globals, deps Deps) *cobra.Command {
 			return op(u.Run(cmd.Context(), cfg.Updates, args))
 		},
 	}
+}
+
+func newSelfUpdateCmd(g *globals, deps Deps) *cobra.Command {
+	var (
+		installPath string
+		tag         string
+	)
+	cmd := &cobra.Command{
+		Use:   "self-update",
+		Short: "Update the installed rc binary and Zsh completion",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rep := newReporter(g, deps)
+			cfg, err := loadConfig(g)
+			if err != nil {
+				return op(err)
+			}
+			if installPath == "" {
+				installPath = filepath.Join(cfg.Roots["home"], ".local", "bin", "rc")
+			}
+			u := &selfupdate.Updater{
+				R:              deps.Runner,
+				Rep:            rep,
+				InstallPath:    installPath,
+				CompletionPath: filepath.Join(cfg.Roots["zsh"], "functions", "hosts", cfg.Hostname, "_rc"),
+				Tag:            tag,
+				DryRun:         g.dryRun,
+			}
+			return op(u.Run(cmd.Context()))
+		},
+	}
+	cmd.Flags().StringVar(&installPath, "path", "", "path to the installed rc binary")
+	cmd.Flags().StringVar(&tag, "tag", "nightly", "GitHub release tag used for binary installs")
+	return cmd
 }
 
 func newDoctorCmd(g *globals, deps Deps) *cobra.Command {

@@ -5,7 +5,7 @@ synchronizes [YADM](https://yadm.io) and Git repositories, manages dotfile
 symlinks and binaries, runs backups and OS/tool updates, reports a Waybar
 status, and runs diagnostics.
 
-It's very specific to my way of configuring my hosts, This used to be a large (hand written) Bash script and this has been vibe rewritted in Go. 
+It's very specific to my way of configuring my hosts, This used to be a large (hand written) Bash script and this has been vibe rewritted in Go.
 
 Conventions for contributors and agents are in [`AGENTS.md`](./AGENTS.md).
 
@@ -33,6 +33,7 @@ rc sync   [--changed-only] [--repo PATH...] [--skip-yadm | --yadm-only]
 rc link
 rc backup [TASK...]
 rc update [TASK...]
+rc self-update
 rc doctor [--offline]
 rc run
 rc config validate
@@ -78,8 +79,24 @@ rc run                       # sync, then link, then backup
 rc sync --changed-only       # only touch repositories with local changes
 rc status --format waybar    # JSON for a Waybar custom module
 rc update                    # run system/tool update tasks
+rc self-update               # update ~/.local/bin/rc and zsh completion
 rc doctor                    # check the environment
 ```
+
+### Self update
+
+`rc self-update` updates the installed binary at `~/.local/bin/rc`.
+
+- If it is a symlink to a `github.com/chmouel/rc` checkout's `bin/rc`, rc
+  refuses to continue when the checkout has local changes, then runs
+  `git pull --ff-only` and `make build`.
+- If it is a regular binary, rc downloads the matching archive from the
+  `nightly` prerelease, verifies it with `checksums.txt`, extracts `rc`, and
+  atomically replaces the installed binary.
+
+After a successful update, rc regenerates Zsh completion by running the updated
+binary and writing `${zsh}/functions/hosts/${HOST}/_rc` (by default,
+`~/.config/zsh/functions/hosts/<host>/_rc`).
 
 ### Shell completion
 

@@ -44,6 +44,7 @@ func newRootCmd(deps Deps) *cobra.Command {
 		newLinkCmd(g, deps),
 		newBackupCmd(g, deps),
 		newUpdateCmd(g, deps),
+		newSelfUpdateCmd(g, deps),
 		newDoctorCmd(g, deps),
 		newRunCmd(g, deps),
 		newConfigCmd(g, deps),

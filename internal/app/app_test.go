@@ -188,6 +188,51 @@ func TestRunReportsLinkedBreakdown(t *testing.T) {
 	}
 }
 
+func TestSelfUpdateSymlinkInstallWritesHostCompletion(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := filepath.Join(home, "git", "perso", "rcbin")
+	builtBinary := filepath.Join(repoRoot, "bin", "rc")
+	installPath := filepath.Join(home, ".local", "bin", "rc")
+	writeAppFile(t, builtBinary, "built")
+	if err := os.Chmod(builtBinary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(installPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(builtBinary, installPath); err != nil {
+		t.Fatal(err)
+	}
+	resolvedBinary, err := filepath.EvalSymlinks(builtBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedRepoRoot := filepath.Dir(filepath.Dir(resolvedBinary))
+
+	fake := runner.NewFake()
+	fake.AddStub("git -C "+resolvedRepoRoot+" config --get remote.origin.url", runner.Result{Stdout: "git@github.com:chmouel/rc.git\n"}, nil)
+	fake.AddStub("git -C "+resolvedRepoRoot+" status --porcelain", runner.Result{}, nil)
+	fake.AddStub("git -C "+resolvedRepoRoot+" pull --ff-only", runner.Result{}, nil)
+	fake.AddStub("make build", runner.Result{}, nil)
+	fake.AddStub(installPath+" completion zsh", runner.Result{Stdout: "#compdef rc\n"}, nil)
+
+	stdout, stderr, code := runWithHome(t, home, fake, "self-update", "--path", installPath)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("self-update should keep stdout clean, got %q", stdout)
+	}
+	completionPath := filepath.Join(home, ".config", "zsh", "functions", "hosts", "testhost", "_rc")
+	data, err := os.ReadFile(completionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "#compdef rc\n" {
+		t.Fatalf("completion = %q", data)
+	}
+}
+
 func TestMigrateCommandRemoved(t *testing.T) {
 	_, errOut, code := run(t, nil, "migrate")
 	if code != 2 {
