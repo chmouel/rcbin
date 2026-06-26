@@ -1,11 +1,14 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/chmouel/rc/internal/config"
@@ -152,6 +155,25 @@ func TestNonInteractiveDirtyFails(t *testing.T) {
 	err := s.Sync(context.Background(), []config.RepoTarget{{Path: work}})
 	if err == nil {
 		t.Fatal("expected non-interactive dirty repo to fail")
+	}
+}
+
+func TestSyncShowsProgressWhenColorEnabled(t *testing.T) {
+	work1 := t.TempDir()
+	work2 := t.TempDir()
+	fake := runner.NewFake()
+	var errBuf bytes.Buffer
+	rep := output.New(io.Discard, &errBuf, true, false)
+	s := &Syncer{R: fake, Rep: rep, Limit: 1}
+
+	if err := s.Sync(context.Background(), []config.RepoTarget{{Path: work1}, {Path: work2}}); err != nil {
+		t.Fatal(err)
+	}
+	got := errBuf.String()
+	for _, want := range []string{"Inspecting repositories", "Synchronizing repositories", "2/2"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("sync progress output missing %q in %q", want, got)
+		}
 	}
 }
 

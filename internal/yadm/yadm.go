@@ -50,13 +50,21 @@ func (s *Syncer) Sync(ctx context.Context) error {
 		return nil
 	}
 
+	progress := s.Rep.Progress("Preparing YADM", 2)
+	defer progress.Stop()
+
 	if len(s.Track) > 0 {
 		if _, err := s.yadm(ctx, append([]string{"add"}, s.Track...)...); err != nil {
 			return fmt.Errorf("staging yadm paths: %w", err)
 		}
 	}
+	progress.Advance("staged paths")
 
-	if s.hasChanges(ctx) {
+	hasChanges := s.hasChanges(ctx)
+	progress.Advance("checked worktree")
+	progress.Stop()
+
+	if hasChanges {
 		if s.NonInteractive || s.Dirty == nil {
 			return fmt.Errorf("yadm has uncommitted changes")
 		}
@@ -68,10 +76,14 @@ func (s *Syncer) Sync(ctx context.Context) error {
 		}
 	}
 
+	syncProgress := s.Rep.Progress("Synchronizing YADM", 3)
+	defer syncProgress.Stop()
+
 	// Pull exactly once.
 	if _, err := s.yadm(ctx, "pull", "--quiet"); err != nil {
 		return fmt.Errorf("yadm pull failed: %w", err)
 	}
+	syncProgress.Advance("pulled")
 
 	// Push only when ahead.
 	if ahead, ok := s.ahead(ctx); ok && ahead > 0 {
@@ -79,8 +91,11 @@ func (s *Syncer) Sync(ctx context.Context) error {
 			return fmt.Errorf("yadm push failed: %w", err)
 		}
 	}
+	syncProgress.Advance("checked upstream")
 
 	remote, _ := s.yadm(ctx, "remote", "get-url", "origin")
+	syncProgress.Advance("read remote")
+	syncProgress.Stop()
 	if remote != "" {
 		s.Rep.Successf("Synced YADM to %s", remote)
 	} else {

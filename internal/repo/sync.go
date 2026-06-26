@@ -56,6 +56,7 @@ func (s *Syncer) Sync(ctx context.Context, repos []config.RepoTarget) error {
 	dirty := make(map[int]bool)
 	results := make([]result, len(targets))
 
+	inspectProgress := s.Rep.Progress("Inspecting repositories", len(targets))
 	for i, t := range targets {
 		results[i].repo = t
 		results[i].name = Name(ctx, s.R, t.Path)
@@ -64,7 +65,9 @@ func (s *Syncer) Sync(ctx context.Context, repos []config.RepoTarget) error {
 		} else {
 			clean = append(clean, i)
 		}
+		inspectProgress.Advance(results[i].name)
 	}
+	inspectProgress.Stop()
 
 	// Clean repositories run concurrently within a bounded worker pool.
 	s.runClean(ctx, targets, clean, results)
@@ -122,12 +125,15 @@ func (s *Syncer) runClean(ctx context.Context, targets []config.RepoTarget, clea
 	if limit < 1 {
 		limit = 4
 	}
+	progress := s.Rep.Progress("Synchronizing repositories", len(clean))
+	defer progress.Stop()
 	sem := make(chan struct{}, limit)
 	var wg sync.WaitGroup
 	for _, idx := range clean {
 		select {
 		case <-ctx.Done():
 			results[idx].err = ctx.Err()
+			progress.Advance(results[idx].name)
 			continue
 		default:
 		}
@@ -137,6 +143,7 @@ func (s *Syncer) runClean(ctx context.Context, targets []config.RepoTarget, clea
 			defer wg.Done()
 			defer func() { <-sem }()
 			results[i] = s.syncClean(ctx, targets[i], results[i].name)
+			progress.Advance(results[i].name)
 		}(idx)
 	}
 	wg.Wait()

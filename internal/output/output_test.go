@@ -136,3 +136,35 @@ func TestReporterHumanOutputUsesStderr(t *testing.T) {
 		}
 	}
 }
+
+func TestProgressRendersToStderrWhenColorEnabled(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	rep := New(&out, &errBuf, true, false)
+
+	progress := rep.Progress("Syncing repositories", 2)
+	progress.Advance("one")
+	progress.Stop()
+
+	if out.String() != "" {
+		t.Fatalf("progress should not use stdout, got %q", out.String())
+	}
+	got := errBuf.String()
+	for _, want := range []string{"Syncing repositories", "1/2", "one"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("progress output missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestProgressNoopWhenColorDisabled(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	rep := New(&out, &errBuf, false, false)
+
+	progress := rep.Progress("Syncing repositories", 2)
+	progress.Advance("one")
+	progress.Stop()
+
+	if out.String() != "" || errBuf.String() != "" {
+		t.Fatalf("disabled progress should stay quiet, stdout=%q stderr=%q", out.String(), errBuf.String())
+	}
+}

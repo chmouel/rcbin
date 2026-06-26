@@ -1,7 +1,9 @@
 package yadm
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -67,6 +69,34 @@ func TestYadmPushesWhenAhead(t *testing.T) {
 	}
 	if pushes != 1 {
 		t.Errorf("expected one push when ahead, got %d", pushes)
+	}
+}
+
+func TestYadmShowsProgressWhenColorEnabled(t *testing.T) {
+	fake := runner.NewFake()
+	fake.AddStub("yadm status", runner.Result{}, nil)
+	fake.AddStub("yadm rev-list", runner.Result{Stdout: "0\n"}, nil)
+	fake.AddStub("yadm remote", runner.Result{Stdout: "git@host:repo\n"}, nil)
+	var errBuf bytes.Buffer
+	rep := output.New(io.Discard, &errBuf, true, false)
+
+	s := &Syncer{R: fake, Rep: rep, StateDir: t.TempDir()}
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := errBuf.String()
+	for _, want := range []string{"Preparing YADM", "Synchronizing YADM", "3/3"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("yadm progress output missing %q in %q", want, got)
+		}
+	}
+	remoteIdx := strings.LastIndex(got, "read remote")
+	successIdx := strings.LastIndex(got, "Synced YADM")
+	if remoteIdx < 0 || successIdx < 0 || remoteIdx >= successIdx {
+		t.Fatalf("expected progress detail before success line in %q", got)
+	}
+	if !strings.Contains(got[remoteIdx:successIdx], "\r\033[K") {
+		t.Fatalf("progress line should be cleared before success line in %q", got)
 	}
 }
 
