@@ -106,11 +106,7 @@ func dedupeHostDuplicates(profile string, file File) (File, error) {
 }
 
 func appendHostPayloads(file *File, profileDir string, ctx hostProfileContext) (bool, error) {
-	found := false
-
-	if appendHostSingletonLink(file, profileDir, "emacs/init.el", filepath.Join(ctx.Roots["emacs"], "lisp", "init-local.el"), ctx.ClaimedSingletons) {
-		found = true
-	}
+	found := appendHostSingletonLink(file, profileDir, "emacs/init.el", filepath.Join(ctx.Roots["emacs"], "lisp", "init-local.el"), ctx.ClaimedSingletons)
 	if appendHostSingletonLink(file, profileDir, "shell/init.zsh", filepath.Join(ctx.Roots["zsh"], "hosts", ctx.Hostname+".sh"), ctx.ClaimedSingletons) {
 		found = true
 	}
@@ -206,7 +202,14 @@ func readHostSystemdLinks(roots map[string]string) (File, bool, error) {
 		return File{}, false, nil
 	}
 	sourceDir := filepath.Join(rcRoot, "systemd")
-	if info, err := os.Stat(targetDir); err != nil || !info.IsDir() {
+	info, err := os.Stat(targetDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return File{}, false, nil
+		}
+		return File{}, false, fmt.Errorf("stat %s: %w", targetDir, err)
+	}
+	if !info.IsDir() {
 		return File{}, false, nil
 	}
 

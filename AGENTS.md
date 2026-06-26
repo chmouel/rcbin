@@ -118,9 +118,9 @@ GOOS=linux  go build ./cmd/rc
 GOOS=darwin go build ./cmd/rc
 ```
 
-Always run `gofmt -w` on changed files (or `golangci-lint fmt`). Keep the tree
-`gofmt`-, `go vet`-, and `golangci-lint`-clean. Run `go mod tidy` after changing
-imports.
+Always run `make lint` after writing or modifying Go code. Also run `gofmt -w`
+on changed files (or `golangci-lint fmt`). Keep the tree `gofmt`-, `go vet`-,
+and `golangci-lint`-clean. Run `go mod tidy` after changing imports.
 
 ### Tooling and CI
 
