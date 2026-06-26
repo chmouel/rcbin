@@ -543,6 +543,22 @@ func TestDefaultsResolve(t *testing.T) {
 	if len(cfg.Updates) == 0 {
 		t.Error("expected default update tasks")
 	}
+	var brew *ResolvedUpdate
+	for i := range cfg.Updates {
+		if cfg.Updates[i].Name == "brew" {
+			brew = &cfg.Updates[i]
+			break
+		}
+	}
+	if brew == nil {
+		t.Fatal("expected default brew update task")
+	}
+	if len(brew.Commands) < 2 {
+		t.Fatalf("expected brew update task to include upgrade command, got %v", brew.Commands)
+	}
+	if got, want := strings.Join(brew.Commands[1].Argv, " "), "brew upgrade -y"; got != want {
+		t.Errorf("brew upgrade command = %q, want %q", got, want)
+	}
 	// Defaults must stay neutral: no personal provider, backup remote, repos, or
 	// backup tasks are baked into the binary.
 	if cfg.Provider != "" {

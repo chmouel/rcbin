@@ -53,7 +53,7 @@ func defaultUpdates() []UpdateTask {
 			Requires:  []string{"brew"},
 			Commands: []Command{
 				{Argv: []string{"brew", "update"}},
-				{Argv: []string{"brew", "upgrade"}},
+				{Argv: []string{"brew", "upgrade", "-y"}},
 				{Argv: []string{"brew", "autoremove"}},
 				{Argv: []string{"brew", "cleanup", "--prune=3"}},
 			},

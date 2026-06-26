@@ -91,3 +91,18 @@ command = { argv = ["pacman", "-Qq"] }
 repo = "desktop_config"
 output = "arch/packages-${HOST}"
 signoff = true
+
+# Built-in update tasks can be overridden by name when needed. The default
+# Homebrew task is equivalent to:
+#
+# [[updates]]
+# name = "brew"
+# platforms = ["linux", "darwin"]
+# requires = ["brew"]
+# commands = [
+#   { argv = ["brew", "update"] },
+#   { argv = ["brew", "upgrade", "-y"] },
+#   { argv = ["brew", "autoremove"] },
+#   { argv = ["brew", "cleanup", "--prune=3"] },
+# ]
+# continue_on_error = true
