@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,22 +122,14 @@ func TestConfigValidateSucceeds(t *testing.T) {
 }
 
 func TestStatusWaybarReportsZero(t *testing.T) {
-	// No repositories exist under the temp HOME, so the count is zero and the
-	// payload is valid JSON on stdout.
+	// No repositories exist under the temp HOME, so the count is zero and
+	// nothing is printed to stdout.
 	out, _, code := run(t, nil, "status", "--format", "waybar")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
-	var payload struct {
-		Text    string `json:"text"`
-		Tooltip string `json:"tooltip"`
-		Class   string `json:"class"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &payload); err != nil {
-		t.Fatalf("waybar output is not JSON: %v\n%s", err, out)
-	}
-	if payload.Text != "0" {
-		t.Errorf("text = %q, want 0", payload.Text)
+	if strings.TrimSpace(out) != "" {
+		t.Errorf("expected no output when no dirty repos, got: %q", out)
 	}
 }
 

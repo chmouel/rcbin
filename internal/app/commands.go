@@ -63,6 +63,9 @@ func newStatusCmd(g *globals, deps Deps) *cobra.Command {
 			dirty := repo.Scan(cmd.Context(), deps.Runner, cfg.Repos)
 
 			if format == "waybar" {
+				if len(dirty) == 0 {
+					return nil
+				}
 				payload, err := output.Waybar(dirty)
 				if err != nil {
 					return op(err)
