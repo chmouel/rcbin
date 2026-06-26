@@ -26,7 +26,7 @@ func ReadFile(path string) (file File, found bool, err error) {
 }
 
 // ResolveRoots merges the roots maps of the given layers (last value wins) and
-// expands each one. It is used to locate the host overlays before the full
+// expands each one. It is used to locate legacy host profiles before the full
 // configuration is built.
 func ResolveRoots(layers []File, vars Vars) (map[string]string, error) {
 	merged := map[string]string{}

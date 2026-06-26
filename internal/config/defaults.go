@@ -8,15 +8,16 @@ func boolPtr(v bool) *bool { return &v }
 // data (Git provider, repositories to clone, the YADM backup remote, and backup
 // tasks that commit into your own config repo) intentionally lives in the user
 // global file, not the binary. See examples/config.toml for a template. The
-// user's global file and host overlays merge on top of these values.
+// user's global file and legacy host profiles merge on top of these values.
 func Defaults() File {
 	return File{
 		Roots: map[string]string{
 			"home":         "~",
 			"config":       "~/.config",
 			"rc":           "~/.local/share/rc",
+			"chmouzies":    "~/.local/share/chmouzies",
 			"repo_base":    "~/git",
-			"desktop_bin":  "~/.local/bin",
+			"desktop_bin":  "~/.local/bin/desktop",
 			"yadm_config":  "~/.config/yadm",
 			"yadm_state":   "~/.local/share/yadm",
 			"emacs":        "~/.config/emacs",

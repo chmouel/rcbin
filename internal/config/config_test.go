@@ -1,6 +1,9 @@
 package config
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,6 +71,366 @@ func TestEnvVarsOnlyExposeAllowedVariables(t *testing.T) {
 	}
 }
 
+func TestParseLegacyRCBasic(t *testing.T) {
+	content := `atuin
+?tmux
+pylint/pylintrc pylintrc
+readline/inputrc ~/.inputrc
+.local/share/desktop-config/krb5/krb5.conf /etc/krb5.conf
+.local/share/desktop-config/jira ~/.config/.jira
+?$GOPATH/bin/goimports .local/bin/goimports
+# a comment
+`
+	links := parseLegacyRC(content, "")
+	byTarget := map[string]Link{}
+	for _, l := range links {
+		byTarget[l.Target] = l
+	}
+
+	if l := byTarget["~/.config/atuin"]; l.SourceRoot != "rc" || l.Source != "atuin" {
+		t.Errorf("atuin: got %+v", l)
+	}
+	if l := byTarget["~/.config/tmux"]; !l.Optional {
+		t.Errorf("tmux should be optional: %+v", l)
+	}
+	if l := byTarget["~/.config/pylintrc"]; l.SourceRoot != "home" || l.Source != "pylint/pylintrc" {
+		t.Errorf("pylintrc (no rc assets root): got %+v", l)
+	}
+	if l := byTarget["/etc/krb5.conf"]; !l.Privileged {
+		t.Errorf("krb5 should be privileged: %+v", l)
+	}
+	if l := byTarget["~/.config/.jira"]; l.SourceRoot != "home" || l.Source != ".local/share/desktop-config/jira" {
+		t.Errorf("jira: got %+v", l)
+	}
+	if l := byTarget["~/.local/bin/goimports"]; l.SourceRoot != "" || l.Source != "${GOPATH}/bin/goimports" || !l.Optional {
+		t.Errorf("goimports: got %+v", l)
+	}
+}
+
+func TestParseLegacyRCWithAssetsRoot(t *testing.T) {
+	assets := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(assets, "pylint"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assets, "pylint", "pylintrc"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	links := parseLegacyRC("pylint/pylintrc pylintrc\n", assets)
+	if links[0].SourceRoot != "rc" {
+		t.Errorf("with assets present, source should be rc: %+v", links[0])
+	}
+}
+
+func TestParseLegacyBins(t *testing.T) {
+	content := `git/gh-clone
+graphical/copy-path :: rf
+perso/x :: .config/zsh/funcs/$HOST/x
+?maybe/missing
+`
+	bins := parseLegacyBinList(content, "chmouzies")
+	if bins[0].SourceRoot != "chmouzies" || bins[0].Target != "gh-clone" {
+		t.Errorf("gh-clone: %+v", bins[0])
+	}
+	if bins[1].Target != "rf" {
+		t.Errorf("bare alias target should be desktop-bin name: %+v", bins[1])
+	}
+	if bins[2].Target != "~/.config/zsh/funcs/${HOST}/x" {
+		t.Errorf("slashed alias target: %+v", bins[2])
+	}
+	if !bins[3].Optional {
+		t.Errorf("optional bin: %+v", bins[3])
+	}
+}
+
+func TestParseLegacyExtraDirs(t *testing.T) {
+	content := `pac/infra
+perso/lazyworktree post_update={ make build }
+perso/x always={ echo hi | cat }
+`
+	repos := parseLegacyExtraDirs(content)
+	if repos[0].Path != "pac/infra" || repos[0].Hooks.PostUpdate != nil {
+		t.Errorf("infra: %+v", repos[0])
+	}
+	if repos[1].Hooks.PostUpdate == nil || len(repos[1].Hooks.PostUpdate.Argv) != 2 {
+		t.Errorf("lazyworktree post_update should be argv [make build]: %+v", repos[1].Hooks)
+	}
+	if repos[2].Hooks.Always == nil || repos[2].Hooks.Always.Shell == "" {
+		t.Errorf("piped hook should be shell form: %+v", repos[2].Hooks)
+	}
+}
+
+func TestLoadLegacyHostProfiles(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	common := filepath.Join(hosts, "common")
+	exact := filepath.Join(hosts, "ibra")
+	for _, dir := range []string{common, exact} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	globalPath := filepath.Join(home, ".config", "rc", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(globalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	global := fmt.Sprintf("version = 1\n\n[roots]\nchmouzies = %q\n", filepath.Join(home, "chmouzies"))
+	if err := os.WriteFile(globalPath, []byte(global), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(common, "rc"), []byte("git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(common, "chmouzies"), []byte("git/gh-clone\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(common, "extra-dirs"), []byte("perso/lazyworktree post_update={ make build }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(exact, "rc"), []byte("git-host git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(Options{
+		GlobalPath: globalPath,
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra", "GOPATH": filepath.Join(home, "go")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Links) != 1 {
+		t.Fatalf("expected exact host to override common link, got %d links", len(cfg.Links))
+	}
+	if got, want := cfg.Links[0].Source, filepath.Join(home, ".local", "share", "rc", "git-host"); got != want {
+		t.Errorf("link source = %q, want %q", got, want)
+	}
+	if got, want := cfg.Links[0].Target, filepath.Join(home, ".config", "git"); got != want {
+		t.Errorf("link target = %q, want %q", got, want)
+	}
+	if len(cfg.Bins) != 1 {
+		t.Fatalf("expected 1 bin, got %d", len(cfg.Bins))
+	}
+	if got, want := cfg.Bins[0].Source, filepath.Join(home, "chmouzies", "git", "gh-clone"); got != want {
+		t.Errorf("bin source = %q, want %q", got, want)
+	}
+	if got, want := cfg.Bins[0].Target, filepath.Join(home, ".local", "bin", "desktop", "gh-clone"); got != want {
+		t.Errorf("bin target = %q, want %q", got, want)
+	}
+	if len(cfg.Repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(cfg.Repos))
+	}
+	if got, want := cfg.Repos[0].Path, filepath.Join(home, "git", "perso", "lazyworktree"); got != want {
+		t.Errorf("repo path = %q, want %q", got, want)
+	}
+	if cfg.Repos[0].Hooks.PostUpdate == nil || strings.Join(cfg.Repos[0].Hooks.PostUpdate.Argv, " ") != "make build" {
+		t.Errorf("repo hook = %+v, want post_update argv [make build]", cfg.Repos[0].Hooks)
+	}
+}
+
+func TestLoadLegacyHostPayloadsAndSystemd(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	common := filepath.Join(hosts, "common")
+	exact := filepath.Join(hosts, "ibra")
+	for _, dir := range []string{common, exact} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeConfigTestFile(t, filepath.Join(common, "emacs", "init.el"), "common emacs")
+	writeConfigTestFile(t, filepath.Join(exact, "emacs", "init.el"), "exact emacs")
+	writeConfigTestFile(t, filepath.Join(common, "shell", "init.zsh"), "common init")
+	writeConfigTestFile(t, filepath.Join(exact, "shell", "init.zsh"), "exact init")
+	writeConfigTestFile(t, filepath.Join(exact, "shell", "post.zsh"), "exact post")
+	writeConfigTestFile(t, filepath.Join(common, "shell", "functions", "shared"), "common function")
+	writeConfigTestFile(t, filepath.Join(exact, "shell", "functions", "shared"), "exact function")
+	writeConfigTestFile(t, filepath.Join(common, "bin", "rhpass"), "common bin")
+	writeConfigTestFile(t, filepath.Join(exact, "bin", "rhpass"), "exact bin")
+
+	rcRoot := filepath.Join(home, ".local", "share", "rc")
+	writeConfigTestFile(t, filepath.Join(rcRoot, "systemd", "demo.service"), "[Service]\n")
+	if err := os.MkdirAll(filepath.Join(home, ".config", "systemd", "user"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(Options{
+		HostsRoot: hosts,
+		Hostname:  "ibra",
+		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	links := map[string]ResolvedLink{}
+	for _, link := range cfg.Links {
+		links[link.Target] = link
+	}
+	emacsTarget := filepath.Join(home, ".config", "emacs", "lisp", "init-local.el")
+	if got, want := links[emacsTarget].Source, filepath.Join(common, "emacs", "init.el"); got != want {
+		t.Errorf("emacs singleton source = %q, want first existing %q", got, want)
+	}
+	initTarget := filepath.Join(home, ".config", "zsh", "hosts", "ibra.sh")
+	if got, want := links[initTarget].Source, filepath.Join(common, "shell", "init.zsh"); got != want {
+		t.Errorf("shell init singleton source = %q, want first existing %q", got, want)
+	}
+	postTarget := filepath.Join(home, ".config", "zsh", "hosts", "ibra-post.sh")
+	if got, want := links[postTarget].Source, filepath.Join(exact, "shell", "post.zsh"); got != want {
+		t.Errorf("shell post source = %q, want %q", got, want)
+	}
+	functionTarget := filepath.Join(home, ".config", "zsh", "functions", "hosts", "ibra", "shared")
+	if got, want := links[functionTarget].Source, filepath.Join(exact, "shell", "functions", "shared"); got != want {
+		t.Errorf("shell function source = %q, want exact host override %q", got, want)
+	}
+	systemdTarget := filepath.Join(home, ".config", "systemd", "user", "demo.service")
+	if got, want := links[systemdTarget].Source, filepath.Join(rcRoot, "systemd", "demo.service"); got != want {
+		t.Errorf("systemd source = %q, want %q", got, want)
+	}
+
+	if len(cfg.Bins) != 1 {
+		t.Fatalf("expected one resolved host bin after exact override, got %d", len(cfg.Bins))
+	}
+	if got, want := cfg.Bins[0].Source, filepath.Join(exact, "bin", "rhpass"); got != want {
+		t.Errorf("host bin source = %q, want exact host override %q", got, want)
+	}
+	if got, want := cfg.Bins[0].Target, filepath.Join(home, ".local", "bin", "desktop", "rhpass"); got != want {
+		t.Errorf("host bin target = %q, want %q", got, want)
+	}
+}
+
+func TestLoadLegacyRepoBinsGOPATHFallback(t *testing.T) {
+	home := t.TempDir()
+	gopath := filepath.Join(home, "go")
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	profile := filepath.Join(hosts, "common")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(gopath, "src", "github.com", "acme", "tool")
+	writeConfigTestFile(t, source, "tool")
+	if err := os.WriteFile(filepath.Join(profile, "repobins"), []byte("acme/tool\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(Options{
+		HostsRoot: hosts,
+		Hostname:  "ibra",
+		Vars:      Vars{"HOME": home, "HOST": "ibra", "GOPATH": gopath},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Bins) != 1 {
+		t.Fatalf("expected 1 repobin, got %d", len(cfg.Bins))
+	}
+	if got := cfg.Bins[0].Source; got != source {
+		t.Errorf("repobin source = %q, want GOPATH fallback %q", got, source)
+	}
+}
+
+func writeConfigTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadIgnoresHostTOML(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	profile := filepath.Join(hosts, "ibra")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "rc.toml"), []byte("%%% invalid toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(Options{
+		HostsRoot: hosts,
+		Hostname:  "ibra",
+		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Links) != 0 || len(cfg.Bins) != 0 || len(cfg.Repos) != 0 {
+		t.Fatalf("host rc.toml should be ignored, got links=%d bins=%d repos=%d", len(cfg.Links), len(cfg.Bins), len(cfg.Repos))
+	}
+}
+
+func TestLoadLegacyDuplicateTargetsError(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	profile := filepath.Join(hosts, "common")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "rc"), []byte("a x\nb x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(Options{
+		HostsRoot: hosts,
+		Hostname:  "ibra",
+		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate link target") {
+		t.Fatalf("expected duplicate link target error, got %v", err)
+	}
+}
+
+func TestLoadLegacyExactDuplicateTargetsAreIgnored(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	profile := filepath.Join(hosts, "common")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "rc"), []byte("a x\na x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(Options{
+		HostsRoot: hosts,
+		Hostname:  "ibra",
+		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Links) != 1 {
+		t.Fatalf("expected exact duplicate link to be deduped, got %d", len(cfg.Links))
+	}
+}
+
+func TestLoadLegacyDuplicateBinTargetsError(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	profile := filepath.Join(hosts, "common")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "chmouzies"), []byte("a\nb :: a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(Options{
+		HostsRoot: hosts,
+		Hostname:  "ibra",
+		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate bin target") {
+		t.Fatalf("expected duplicate bin target error, got %v", err)
+	}
+}
+
 func TestBooleanScalarCanOverrideDefaultToFalse(t *testing.T) {
 	no := false
 	cfg, err := Build([]File{Defaults(), {Tools: ToolsLayer{PreferEmacs: &no}}}, testVars(), "ibra")
@@ -131,7 +494,7 @@ func TestBinTargetResolution(t *testing.T) {
 	for _, b := range cfg.Bins {
 		byTarget[b.Target] = b
 	}
-	if _, ok := byTarget["/home/u/.local/bin/gh-clone"]; !ok {
+	if _, ok := byTarget["/home/u/.local/bin/desktop/gh-clone"]; !ok {
 		t.Errorf("bare bin target not placed under desktop_bin: %v", cfg.Bins)
 	}
 	if _, ok := byTarget["/home/u/sub/dir/name"]; !ok {

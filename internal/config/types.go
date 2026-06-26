@@ -1,10 +1,10 @@
-// Package config defines the layered TOML configuration model for rc, loads and
-// merges the global file with host overlays, expands path variables, and
-// validates the result into typed values shared by execution and diagnostics.
+// Package config defines the layered configuration model for rc, loads and
+// merges the global TOML file with legacy host profiles, expands path variables,
+// and validates the result into typed values shared by execution and diagnostics.
 //
-// Merge order is: built-in defaults, global file, common overlay, lexically
-// sorted multi-host overlays, then the exact host overlay. Scalars take the
-// last specified value. Domain lists are keyed (links by target, bins by
+// Merge order is: built-in defaults, global TOML file, common legacy profile,
+// lexically sorted multi-host profiles, then the exact host profile. Scalars
+// take the last specified value. Domain lists are keyed (links by target, bins by
 // target, repositories by path, tasks by name); later layers replace or extend
 // earlier entries with the same key, giving the exact host deterministic
 // priority.
@@ -46,7 +46,7 @@ type Hooks struct {
 	Always     *Command `toml:"always"`
 }
 
-// Repository is an extra Git repository contributed by a host overlay.
+// Repository is an extra Git repository contributed by a host profile.
 type Repository struct {
 	Path  string `toml:"path"`
 	Hooks Hooks  `toml:"hooks"`
@@ -130,9 +130,9 @@ type DoctorConfig struct {
 	TimeoutSeconds int        `toml:"timeout_seconds"`
 }
 
-// File is the on-disk representation of any configuration layer. Global files
-// populate roots and engine sections; host overlays populate links, bins, and
-// repositories. Unset sections are ignored during merge.
+// File is the in-memory representation of any configuration layer. Global TOML
+// files populate roots and engine sections; legacy host profiles populate links,
+// bins, and repositories. Unset sections are ignored during merge.
 type File struct {
 	Version int `toml:"version"`
 

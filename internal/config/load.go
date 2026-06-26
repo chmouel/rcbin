@@ -11,7 +11,7 @@ import (
 type Options struct {
 	// GlobalPath overrides the global config file path.
 	GlobalPath string
-	// HostsRoot overrides the host overlay root (default: <yadm_config>/hosts).
+	// HostsRoot overrides the legacy host profile root (default: <yadm_config>/hosts).
 	HostsRoot string
 	// Hostname overrides the detected hostname.
 	Hostname string
@@ -19,7 +19,7 @@ type Options struct {
 	Vars Vars
 }
 
-// Load detects the host, discovers overlays, and builds the merged config.
+// Load detects the host, discovers legacy profiles, and builds the merged config.
 func Load(opts Options) (*Config, error) {
 	vars := opts.Vars
 	if vars == nil {
@@ -62,14 +62,26 @@ func Load(opts Options) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	claimedSingletons := map[string]struct{}{}
 	for _, p := range profiles {
-		overlay, found, err := ReadFile(filepath.Join(p, "rc.toml"))
+		profile, found, err := readLegacyProfile(p, legacyProfileContext{
+			Roots:               baseRoots,
+			Vars:                vars,
+			Hostname:            hostname,
+			ClaimedSingletons:   claimedSingletons,
+			IncludeHostPayloads: true,
+		})
 		if err != nil {
 			return nil, err
 		}
 		if found {
-			layers = append(layers, overlay)
+			layers = append(layers, profile)
 		}
+	}
+	if systemdLinks, found, err := readLegacySystemdLinks(baseRoots); err != nil {
+		return nil, err
+	} else if found {
+		layers = append(layers, systemdLinks)
 	}
 
 	return Build(layers, vars, hostname)

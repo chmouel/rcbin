@@ -11,14 +11,13 @@
 
 version = 1
 
-# Named roots referenced by links, bins, repositories, and backups. These extend
-# the built-in roots (home, config, rc, repo_base, desktop_bin, yadm_config,
-# yadm_state, emacs, zsh, systemd_user).
+# Named roots referenced by links, bins, repositories, and backups. These
+# override or extend the built-in roots (home, config, rc, chmouzies, repo_base,
+# desktop_bin, yadm_config, yadm_state, emacs, zsh, systemd_user).
 [roots]
-chmouzies = "~/.local/share/chmouzies"
 desktop_config = "~/.local/share/desktop-config"
-# Override the default ~/.local/bin if you keep desktop scripts in a subfolder.
-desktop_bin = "~/.local/bin/desktop"
+# Override the default ~/.local/bin/desktop if you keep desktop scripts elsewhere.
+# desktop_bin = "~/.local/bin/desktop"
 
 # Git provider shorthand and the repositories rc clones and synchronizes. A clone
 # value without a slash is resolved as "<provider>/<value>.git"; a full URL is
