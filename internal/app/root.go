@@ -21,12 +21,12 @@ func newRootCmd(deps Deps) *cobra.Command {
 		Short:         "Workstation orchestrator for dotfiles, repositories, and maintenance",
 		Long:          "rc synchronizes YADM and Git repositories, manages symlinks, runs backups and updates, and reports diagnostics.",
 		Version:       versionOrDefault(deps.Version),
+		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Running rc with no arguments prints help and exits successfully
-		// without mutation.
+		// Running rc with no command executes the same workflow as rc run.
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
+			return runWorkflow(cmd, g, deps)
 		},
 	}
 

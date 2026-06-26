@@ -49,13 +49,49 @@ func writeAppFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestNoArgsPrintsHelp(t *testing.T) {
-	out, _, code := run(t, nil)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
+func TestNoArgsRunsDefaultWorkflow(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".local", "share", "rc", "zsh"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Usage:") {
-		t.Errorf("help output missing Usage:\n%s", out)
+	source := filepath.Join(home, ".config", "yadm", "hosts", "testhost", "bin", "new-tool")
+	writeAppFile(t, source, "new")
+
+	stdout, stderr, code := runWithHome(t, home, nil)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("default run should keep stdout clean, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "linked 2 targets (links=1 bins=1 completions=0)") {
+		t.Fatalf("default run stderr should report linked breakdown, got:\n%s", stderr)
+	}
+}
+
+func TestHelpPrintsHelp(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "command", args: []string{"help"}},
+		{name: "flag", args: []string{"--help"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := runner.NewFake()
+			out, errOut, code := run(t, fake, tt.args...)
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, errOut)
+			}
+			if !strings.Contains(out, "Usage:") {
+				t.Errorf("help output missing Usage:\n%s", out)
+			}
+			if calls := fake.CallLines(); len(calls) != 0 {
+				t.Fatalf("help should not run workflow, calls: %v", calls)
+			}
+		})
 	}
 }
 

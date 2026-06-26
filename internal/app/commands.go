@@ -338,43 +338,47 @@ func newRunCmd(g *globals, deps Deps) *cobra.Command {
 		Short: "Run sync, link, and backup in order",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rep := newReporter(g, deps)
-			cfg, err := loadConfig(g)
-			if err != nil {
-				return op(err)
-			}
-			ctx := cmd.Context()
-
-			// Synchronize first. A sync failure makes further mutation unsafe.
-			var syncErrs []error
-			if err := syncRepos(ctx, g, deps, rep, cfg, nil, false); err != nil {
-				if abortedByUser(rep, err) {
-					return nil
-				}
-				syncErrs = append(syncErrs, err)
-			}
-			if err := syncYadm(ctx, g, deps, rep, cfg); err != nil {
-				syncErrs = append(syncErrs, err)
-			}
-			if len(syncErrs) > 0 {
-				rep.Errorf("synchronization failed; skipping link and backup")
-				return op(errors.Join(syncErrs...))
-			}
-
-			// Link and backup are independent; aggregate their errors.
-			var errs []error
-			home := cfg.Roots["home"]
-			l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, cfg.Roots["desktop_bin"], g.dryRun)
-			if err := l.Apply(ctx, l.BuildPlan(cfg)); err != nil {
-				errs = append(errs, err)
-			}
-			b := &maintenance.Backup{R: deps.Runner, Rep: rep, Shell: cfg.Shell(), GOOS: runtime.GOOS, DryRun: g.dryRun}
-			if err := b.Run(ctx, cfg.Backups, nil); err != nil {
-				errs = append(errs, err)
-			}
-			return op(errors.Join(errs...))
+			return runWorkflow(cmd, g, deps)
 		},
 	}
+}
+
+func runWorkflow(cmd *cobra.Command, g *globals, deps Deps) error {
+	rep := newReporter(g, deps)
+	cfg, err := loadConfig(g)
+	if err != nil {
+		return op(err)
+	}
+	ctx := cmd.Context()
+
+	// Synchronize first. A sync failure makes further mutation unsafe.
+	var syncErrs []error
+	if err := syncRepos(ctx, g, deps, rep, cfg, nil, false); err != nil {
+		if abortedByUser(rep, err) {
+			return nil
+		}
+		syncErrs = append(syncErrs, err)
+	}
+	if err := syncYadm(ctx, g, deps, rep, cfg); err != nil {
+		syncErrs = append(syncErrs, err)
+	}
+	if len(syncErrs) > 0 {
+		rep.Errorf("synchronization failed; skipping link and backup")
+		return op(errors.Join(syncErrs...))
+	}
+
+	// Link and backup are independent; aggregate their errors.
+	var errs []error
+	home := cfg.Roots["home"]
+	l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, cfg.Roots["desktop_bin"], g.dryRun)
+	if err := l.Apply(ctx, l.BuildPlan(cfg)); err != nil {
+		errs = append(errs, err)
+	}
+	b := &maintenance.Backup{R: deps.Runner, Rep: rep, Shell: cfg.Shell(), GOOS: runtime.GOOS, DryRun: g.dryRun}
+	if err := b.Run(ctx, cfg.Backups, nil); err != nil {
+		errs = append(errs, err)
+	}
+	return op(errors.Join(errs...))
 }
 
 func newConfigCmd(g *globals, deps Deps) *cobra.Command {

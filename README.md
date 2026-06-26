@@ -28,6 +28,8 @@ install -m 0755 rc ~/.local/bin/rc
 ## Usage
 
 ```text
+rc
+rc help
 rc status [--format text|waybar]
 rc sync   [--changed-only] [--repo PATH...] [--skip-yadm | --yadm-only]
 rc link
@@ -40,8 +42,8 @@ rc config validate
 rc completion [bash|zsh|fish|powershell]
 ```
 
-Running `rc` with no arguments prints help and exits successfully without
-making any changes.
+Running `rc` with no arguments executes the default `rc run` workflow. Use
+`rc help` or `rc --help` to show help without making changes.
 
 ### Global options
 
@@ -79,7 +81,8 @@ making any changes.
 ### Common workflows
 
 ```bash
-rc run                       # sync, then link, then backup
+rc                           # same as rc run: sync, then link, then backup
+rc help                      # show help
 rc sync --changed-only       # only touch repositories with local changes
 rc status --format waybar    # JSON for a Waybar custom module
 rc update                    # run system/tool update tasks
