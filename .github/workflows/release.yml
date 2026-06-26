@@ -27,6 +27,3 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Token with write access to chmouel/homebrew-tap so GoReleaser can
-          # update the Homebrew formula. Falls back to empty when unset.
-          GH_PERSO_TOKEN: ${{ secrets.GH_PERSO_TOKEN || '' }}

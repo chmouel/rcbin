@@ -58,7 +58,6 @@ jobs:
           args: release --snapshot --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_PERSO_TOKEN: ${{ secrets.GH_PERSO_TOKEN || '' }}
 
       - name: Publish nightly prerelease
         if: steps.changes.outputs.changed == 'true'

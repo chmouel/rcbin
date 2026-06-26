@@ -11,10 +11,10 @@ Conventions for contributors and agents are in [`AGENTS.md`](./AGENTS.md).
 
 ## Install
 
-With [Homebrew](https://brew.sh):
+With the nightly binary installer:
 
 ```bash
-brew install chmouel/tap/rc
+curl -fsSL https://raw.githubusercontent.com/chmouel/rc/main/install.sh | sh
 ```
 
 Or build from source:
@@ -112,7 +112,7 @@ rc completion fish | source
 ```
 
 Run `rc completion <shell> --help` for instructions on installing it
-permanently. The Homebrew formula installs completions automatically.
+permanently.
 
 ## Configuration
 

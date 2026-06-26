@@ -82,9 +82,7 @@ test plans.
 ## Releases
 
 Releases are produced by [GoReleaser](https://goreleaser.com) when a `vX.Y.Z`
-tag is pushed. The release also updates the Homebrew formula in
-`chmouel/homebrew-tap`, which requires a `HOMEBREW_TAP_GITHUB_TOKEN` repository
-secret with write access to that tap. Validate locally with:
+tag is pushed. Validate locally with:
 
 ```bash
 goreleaser check

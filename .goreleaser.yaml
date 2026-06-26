@@ -35,31 +35,6 @@ archives:
       - LICENSE*
       - AGENTS.md
 
-homebrew_casks:
-  - name: rc
-    repository:
-      owner: chmouel
-      name: homebrew-tap
-      branch: main
-      # Pushing to a separate tap repository needs a token with write access to
-      # it; the default GITHUB_TOKEN cannot. Provide it as the
-      # GH_PERSO_TOKEN repository secret (see release.yml).
-      token: "{{ .Env.GH_PERSO_TOKEN }}"
-    directory: Casks
-    homepage: "https://github.com/chmouel/rc"
-    description: "Workstation orchestrator: sync repos and YADM, manage dotfiles, run backups, updates, and diagnostics"
-    license: MIT
-    commit_author:
-      name: goreleaser-bot
-      email: bot@goreleaser.com
-    # Remove the quarantine flag so the unsigned binary runs on macOS.
-    hooks:
-      post:
-        install: |
-          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/rc"]
-          end
-
 checksum:
   name_template: checksums.txt
 
