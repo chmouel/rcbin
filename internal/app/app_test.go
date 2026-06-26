@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -124,31 +123,13 @@ func TestSyncChangedOnlyDoesNotCloneOrSyncYadmByDefault(t *testing.T) {
 	}
 }
 
-func TestMigrateGeneratesOverlay(t *testing.T) {
-	legacy := t.TempDir()
-	out := t.TempDir()
-	profile := filepath.Join(legacy, "common")
-	if err := os.MkdirAll(profile, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(profile, "rc"), []byte("git\natuin\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, errOut, code := run(t, nil, "migrate", "--legacy-root", legacy, "--output-root", out)
-	if code != 0 {
-		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, errOut)
-	}
-	generated := filepath.Join(out, "common", "rc.toml")
-	if _, err := os.Stat(generated); err != nil {
-		t.Fatalf("expected generated overlay at %s: %v", generated, err)
-	}
-}
-
-func TestMigrateRequiresOutputRoot(t *testing.T) {
-	_, _, code := run(t, nil, "migrate")
+func TestMigrateCommandRemoved(t *testing.T) {
+	_, errOut, code := run(t, nil, "migrate")
 	if code != 2 {
-		t.Fatalf("exit code = %d, want 2 (missing required flag is a usage error)", code)
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errOut, "unknown command") {
+		t.Errorf("stderr = %q, want unknown command", errOut)
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/chmouel/rc/internal/doctor"
 	"github.com/chmouel/rc/internal/linker"
 	"github.com/chmouel/rc/internal/maintenance"
-	"github.com/chmouel/rc/internal/migrate"
 	"github.com/chmouel/rc/internal/output"
 	"github.com/chmouel/rc/internal/repo"
 	"github.com/chmouel/rc/internal/yadm"
@@ -365,50 +364,6 @@ func newConfigCmd(g *globals, deps Deps) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(validate)
-	return cmd
-}
-
-func newMigrateCmd(g *globals, deps Deps) *cobra.Command {
-	var legacyRoot, outputRoot string
-	cmd := &cobra.Command{
-		Use:   "migrate",
-		Short: "Convert legacy host configuration files into TOML overlays",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			rep := newReporter(g, deps)
-
-			vars := config.EnvVars(g.host)
-			home := vars["HOME"]
-			if legacyRoot == "" {
-				legacyRoot = filepath.Join(home, ".config", "yadm", "hosts")
-			}
-
-			results, err := migrate.Migrate(migrate.Options{
-				LegacyRoot:   legacyRoot,
-				OutputRoot:   outputRoot,
-				RCAssetsRoot: filepath.Join(home, ".local", "share", "rc"),
-				RepoBase:     filepath.Join(home, "git"),
-			})
-			if err != nil {
-				return op(err)
-			}
-			if len(results) == 0 {
-				rep.Warnf("no convertible legacy files found under %s", legacyRoot)
-				return nil
-			}
-			for _, r := range results {
-				rep.Successf("%s: links=%d bins=%d repos=%d -> %s", r.Profile, r.Links, r.Bins, r.Repos, r.OutputFile)
-				for _, w := range r.Warnings {
-					rep.Warnf("%s: %s", r.Profile, w)
-				}
-			}
-			return nil
-		},
-	}
-	f := cmd.Flags()
-	f.StringVar(&legacyRoot, "legacy-root", "", "legacy host config root (default: ~/.config/yadm/hosts)")
-	f.StringVar(&outputRoot, "output-root", "", "destination root for generated rc.toml overlays")
-	_ = cmd.MarkFlagRequired("output-root")
 	return cmd
 }
 
