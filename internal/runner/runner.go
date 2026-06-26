@@ -132,11 +132,11 @@ func (e *Exec) Run(ctx context.Context, spec Spec) (Result, error) {
 
 // runInteractive runs a child that owns the controlling terminal (lazygit,
 // Emacs, a direct git commit, ...). The child is deliberately left in rc's
-// process group — the terminal's foreground group — so it can read and write
-// the TTY and receives keyboard signals such as Ctrl-C directly. It is not
-// bound to the context, so a Ctrl-C the user typed into the child never tears
-// the child down from underneath them. While it runs, InteractiveActive reports
-// true so the top-level signal handler defers terminal signals to the child.
+// process group — the terminal's foreground group — so it can write to the TTY
+// and receives keyboard signals such as Ctrl-C directly. It is not bound to the
+// context, so a Ctrl-C the user typed into the child never tears the child down
+// from underneath them. While it runs, InteractiveActive reports true so the
+// top-level signal handler defers terminal signals to the child.
 func (e *Exec) runInteractive(spec Spec, env []string) (Result, error) {
 	interactiveDepth.Add(1)
 	defer interactiveDepth.Add(-1)
@@ -144,7 +144,11 @@ func (e *Exec) runInteractive(spec Spec, env []string) (Result, error) {
 	cmd := exec.Command(spec.Name, spec.Args...)
 	cmd.Dir = spec.Dir
 	cmd.Env = env
-	cmd.Stdin = os.Stdin
+	if spec.Stdin != "" {
+		cmd.Stdin = strings.NewReader(spec.Stdin)
+	} else {
+		cmd.Stdin = os.Stdin
+	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

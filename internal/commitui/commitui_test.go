@@ -77,25 +77,29 @@ func TestMenuPromptHighlightsHotkeys(t *testing.T) {
 	if strings.Contains(plain, "\033[") {
 		t.Errorf("menu prompt with color off must be plain, got %q", plain)
 	}
-	for _, want := range []string{"[m]", "[l]", "[s]", "[a]", "[c]", "[q]"} {
+	for _, want := range []string{"[m]", "[l]", "[d]", "[s]", "[a]", "[c]", "[q]"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("menu prompt missing %q in %q", want, plain)
 		}
 	}
 }
 
-func TestColorStatusLineColorsColumns(t *testing.T) {
+func TestCompactStatusLineUsesRcoldSpacingAndColorsColumns(t *testing.T) {
 	a := &Adapter{Rep: output.New(io.Discard, io.Discard, true, false)}
-	got := a.colorStatusLine(" M early-init.el")
+	got := a.compactStatusLine(changedFile{Status: " M", Path: "early-init.el"})
 	if !strings.Contains(got, "early-init.el") {
 		t.Errorf("status line must keep the path, got %q", got)
 	}
 	if !strings.Contains(got, "\033[") {
 		t.Errorf("status line with color on must emit ANSI, got %q", got)
 	}
-	plain := (&Adapter{Rep: output.New(io.Discard, io.Discard, false, false)}).colorStatusLine(" M early-init.el")
-	if plain != " M early-init.el" {
-		t.Errorf("status line with color off must be unchanged, got %q", plain)
+	plain := (&Adapter{Rep: output.New(io.Discard, io.Discard, false, false)}).compactStatusLine(changedFile{Status: " M", Path: "early-init.el"})
+	if plain != "M  early-init.el" {
+		t.Errorf("status line with color off = %q", plain)
+	}
+	untracked := (&Adapter{Rep: output.New(io.Discard, io.Discard, false, false)}).compactStatusLine(changedFile{Status: "??", Path: "new file"})
+	if untracked != "?? new file" {
+		t.Errorf("untracked status line = %q", untracked)
 	}
 }
 
@@ -275,29 +279,94 @@ func TestAICommitSelectorCancelReturnsToMenu(t *testing.T) {
 	}
 }
 
-func TestShowStatusPreservesFirstLineColumn(t *testing.T) {
+func TestShowStatusUsesRcoldSpacing(t *testing.T) {
 	fake := runner.NewFake()
-	// Worktree-modified files have a leading-space staged column (" M path").
-	// The first line must keep that column instead of losing its first char.
-	fake.AddStub("git -C /repo status --short",
-		runner.Result{Stdout: " M early-init.el\n M init.el\n"}, nil)
+	fake.AddStub("git -C /repo status --porcelain=v1 -z",
+		runner.Result{Stdout: " M early-init.el\x00M  init.el\x00R  new-name\x00old-name\x00?? untracked\x00"}, nil)
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
 	var errBuf strings.Builder
 	a := &Adapter{
 		R:   fake,
 		Rep: output.New(io.Discard, &errBuf, false, false),
 	}
-	a.showStatus(context.Background(), "/repo")
-	got := errBuf.String()
-	if !strings.Contains(got, "early-init.el") {
-		t.Fatalf("first line mangled, got %q", got)
+	if err := a.showStatus(context.Background(), "/repo"); err != nil {
+		t.Fatal(err)
 	}
-	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
-		if !strings.HasSuffix(line, "early-init.el") && !strings.HasSuffix(line, "init.el") {
-			t.Fatalf("unexpected status line %q", line)
+	got := errBuf.String()
+	for _, want := range []string{
+		"M  early-init.el",
+		"M  init.el",
+		"R  old-name -> new-name",
+		"?? untracked",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("status output missing %q in %q", want, got)
 		}
-		if !strings.Contains(line, " M ") {
-			t.Errorf("status column lost on line %q", line)
+	}
+}
+
+func TestDiffToggleRendersFullDiffThenReturnsToMenu(t *testing.T) {
+	fake := runner.NewFake()
+	dir := "/repo"
+	fake.AddStub("git -C "+dir+" rev-parse HEAD", runner.Result{Stdout: "before\n"}, nil)
+	fake.AddStub("git -C "+dir+" status --porcelain=v1 -z",
+		runner.Result{Stdout: " M tracked.txt\x00?? new.txt\x00"}, nil)
+	fake.AddStub("git -C "+dir+" diff --no-ext-diff --cached",
+		runner.Result{Stdout: "diff --git a/staged.txt b/staged.txt\n"}, nil)
+	fake.AddStub("git -C "+dir+" diff --no-ext-diff",
+		runner.Result{Stdout: "diff --git a/tracked.txt b/tracked.txt\n"}, nil)
+	fake.AddStub("delta --paging=auto", runner.Result{}, nil)
+	var errBuf strings.Builder
+	a := &Adapter{
+		R:   fake,
+		Rep: output.New(io.Discard, &errBuf, false, false),
+		Pr:  &seqPrompter{keys: []byte{'d', 's'}},
+	}
+
+	changed, err := a.Handle(context.Background(), config.RepoTarget{Path: dir}, "repo")
+	if err != nil {
+		t.Fatalf("diff then skip should succeed, got %v", err)
+	}
+	if changed {
+		t.Fatal("diff toggle then skip should report no HEAD change")
+	}
+
+	got := errBuf.String()
+	for _, want := range []string{
+		"M  tracked.txt",
+		"?? new.txt",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("diff toggle output missing %q in %q", want, got)
+		}
+	}
+	var deltaCall *runner.Call
+	for _, call := range fake.CallRecords() {
+		if call.Name == "delta" {
+			c := call
+			deltaCall = &c
+		}
+	}
+	if deltaCall == nil {
+		t.Fatalf("expected delta to render the full diff, calls: %v", fake.CallLines())
+	}
+	if !deltaCall.Interactive {
+		t.Fatalf("delta must run interactively so it can page, call: %+v", *deltaCall)
+	}
+	if got := strings.Join(deltaCall.Args, " "); got != "--paging=auto" {
+		t.Fatalf("delta args = %q, want --paging=auto", got)
+	}
+	for _, want := range []string{
+		"diff --git a/staged.txt b/staged.txt",
+		"diff --git a/tracked.txt b/tracked.txt",
+	} {
+		if !strings.Contains(deltaCall.Stdin, want) {
+			t.Errorf("delta stdin missing %q in %q", want, deltaCall.Stdin)
+		}
+	}
+	for _, line := range fake.CallLines() {
+		if strings.Contains(line, "lazygit") || strings.Contains(line, "pull") || strings.Contains(line, "push") {
+			t.Fatalf("diff toggle must not run sync actions, saw %q in %v", line, fake.CallLines())
 		}
 	}
 }

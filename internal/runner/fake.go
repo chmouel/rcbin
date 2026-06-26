@@ -12,6 +12,7 @@ type Call struct {
 	Name        string
 	Args        []string
 	Dir         string
+	Stdin       string
 	Interactive bool
 }
 
@@ -60,7 +61,7 @@ func (f *Fake) LookPath(name string) (string, bool) {
 func (f *Fake) Run(_ context.Context, spec Spec) (Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.Calls = append(f.Calls, Call{Name: spec.Name, Args: append([]string{}, spec.Args...), Dir: spec.Dir, Interactive: spec.Interactive})
+	f.Calls = append(f.Calls, Call{Name: spec.Name, Args: append([]string{}, spec.Args...), Dir: spec.Dir, Stdin: spec.Stdin, Interactive: spec.Interactive})
 
 	line := spec.Name
 	if len(spec.Args) > 0 {
@@ -98,7 +99,7 @@ func (f *Fake) CallRecords() []Call {
 	defer f.mu.Unlock()
 	out := make([]Call, len(f.Calls))
 	for i, c := range f.Calls {
-		out[i] = Call{Name: c.Name, Args: append([]string{}, c.Args...), Dir: c.Dir, Interactive: c.Interactive}
+		out[i] = Call{Name: c.Name, Args: append([]string{}, c.Args...), Dir: c.Dir, Stdin: c.Stdin, Interactive: c.Interactive}
 	}
 	return out
 }

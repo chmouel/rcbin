@@ -56,10 +56,11 @@ making any changes.
 
 - All mutating commands honor `--dry-run`.
 - For a dirty repository the prompt reads a single keypress (no Enter needed):
-  `m` Magit, `l` lazygit (default), `s` skip, `a` aicommit, `c` direct commit,
-  `q` quit. When multiple files changed, `a` opens a file selector: arrows or
-  `j`/`k` move, Space toggles files, `a` toggles all, Enter commits selected
-  files, and `q` cancels back to the menu. After an action rc asks
+  `m` Magit, `l` lazygit (default), `d` toggle compact/paged delta-highlighted
+  diff, `s` skip, `a` aicommit, `c` direct commit, `q` quit. When multiple
+  files changed, `a` opens a file selector: arrows or `j`/`k` move, Space
+  toggles files, `a` toggles all, Enter commits selected files, and `q` cancels
+  back to the menu. After an action rc asks
   `Would you like to continue? ([Y]es/[n]o/[b]ack)`
   before pulling and pushing; `b` returns to the menu, and `n`, `q`, or `Ctrl+C`
   aborts the run cleanly.

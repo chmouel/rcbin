@@ -58,6 +58,29 @@ func TestInteractiveSharesForegroundGroup(t *testing.T) {
 	}
 }
 
+func TestInteractiveCanReceiveProvidedStdin(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	out := filepath.Join(t.TempDir(), "stdin")
+	_, err := New().Run(context.Background(), Spec{
+		Name:        "sh",
+		Args:        []string{"-c", "cat > " + out},
+		Stdin:       "from rc\n",
+		Interactive: true,
+	})
+	if err != nil {
+		t.Fatalf("interactive run: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read stdin file: %v", err)
+	}
+	if got := string(data); got != "from rc\n" {
+		t.Errorf("interactive stdin = %q, want provided stdin", got)
+	}
+}
+
 // TestCapturedRunsInOwnGroup verifies that captured children get their own
 // process group so cancellation can signal the whole group.
 func TestCapturedRunsInOwnGroup(t *testing.T) {

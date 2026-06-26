@@ -32,6 +32,20 @@ type fileSelector interface {
 	SelectFiles(title string, files []changedFile, rep *output.Reporter) ([]changedFile, bool, error)
 }
 
+type changeDisplayMode int
+
+const (
+	changeDisplayCompact changeDisplayMode = iota
+	changeDisplayFullDiff
+)
+
+func (m changeDisplayMode) toggle() changeDisplayMode {
+	if m == changeDisplayFullDiff {
+		return changeDisplayCompact
+	}
+	return changeDisplayFullDiff
+}
+
 // Adapter implements repo.DirtyHandler and yadm.Interactive.
 type Adapter struct {
 	R        runner.Runner
@@ -51,9 +65,12 @@ func (a *Adapter) Handle(ctx context.Context, target config.RepoTarget, name str
 	a.Rep.Rule(name)
 
 	// Loop the action menu so [b]ack from the continue prompt re-displays it.
+	displayMode := changeDisplayCompact
 menu:
 	for {
-		a.showStatus(ctx, dir)
+		if err := a.showChanges(ctx, dir, displayMode); err != nil {
+			return false, err
+		}
 
 		choice, err := a.Pr.Choice(a.menuPrompt(name), 'l')
 		if err != nil {
@@ -66,6 +83,9 @@ menu:
 		case 's':
 			a.Rep.Infof("skipping %s", name)
 			return false, nil
+		case 'd':
+			displayMode = displayMode.toggle()
+			continue menu
 		case 'm':
 			if err := a.emacs(ctx, dir, "magit-status"); err != nil {
 				return false, err
@@ -198,7 +218,7 @@ func parseChangedFilesZ(out string) []changedFile {
 	files := make([]changedFile, 0, len(parts))
 	for i := 0; i < len(parts); i++ {
 		entry := parts[i]
-		if entry == "" || len(entry) < 4 {
+		if entry == "" || len(entry) < 4 || entry[2] != ' ' {
 			continue
 		}
 		status := entry[:2]
@@ -227,21 +247,90 @@ func (a *Adapter) fileSelector() fileSelector {
 	return nil
 }
 
-func (a *Adapter) showStatus(ctx context.Context, dir string) {
-	res, _ := a.R.Run(ctx, runner.Spec{Name: "git", Args: []string{"-C", dir, "status", "--short"}, Dir: dir})
-	// Trim only trailing newlines: git's short format encodes the staged column
-	// as the first character, which may be a space (e.g. " M path"), so trimming
-	// leading whitespace would mangle the first line.
-	out := strings.Trim(res.Stdout, "\n")
-	if strings.TrimSpace(out) == "" {
-		return
+func (a *Adapter) showChanges(ctx context.Context, dir string, mode changeDisplayMode) error {
+	if mode == changeDisplayFullDiff {
+		return a.showDiff(ctx, dir)
 	}
-	for _, line := range strings.Split(out, "\n") {
-		if line == "" {
+	return a.showStatus(ctx, dir)
+}
+
+func (a *Adapter) showStatus(ctx context.Context, dir string) error {
+	files, err := a.changedFiles(ctx, dir)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		a.Rep.Println(a.compactStatusLine(file))
+	}
+	return nil
+}
+
+func (a *Adapter) showDiff(ctx context.Context, dir string) error {
+	diff, err := a.combinedDiff(ctx, dir)
+	if err != nil {
+		return err
+	}
+	printed := false
+	if strings.TrimSpace(diff) != "" {
+		if err := a.delta(ctx, diff); err != nil {
+			return err
+		}
+		printed = true
+	}
+
+	files, err := a.changedFiles(ctx, dir)
+	if err != nil {
+		return err
+	}
+	printedUntracked := false
+	for _, file := range files {
+		if file.Status != "??" {
 			continue
 		}
-		a.Rep.Println(a.colorStatusLine(line))
+		if printed && !printedUntracked {
+			a.Rep.Println("")
+		}
+		a.Rep.Println(a.compactStatusLine(file))
+		printed = true
+		printedUntracked = true
 	}
+	return nil
+}
+
+func (a *Adapter) combinedDiff(ctx context.Context, dir string) (string, error) {
+	var chunks []string
+	for _, args := range [][]string{
+		{"--cached"},
+		nil,
+	} {
+		out, err := a.gitDiff(ctx, dir, args...)
+		if err != nil {
+			return "", err
+		}
+		out = strings.TrimRight(out, "\n")
+		if strings.TrimSpace(out) == "" {
+			continue
+		}
+		chunks = append(chunks, out)
+	}
+	if len(chunks) == 0 {
+		return "", nil
+	}
+	return strings.Join(chunks, "\n") + "\n", nil
+}
+
+func (a *Adapter) delta(ctx context.Context, diff string) error {
+	if _, ok := a.R.LookPath("delta"); !ok {
+		return fmt.Errorf("delta not found for diff display")
+	}
+	_, err := a.R.Run(ctx, runner.Spec{Name: "delta", Args: []string{"--paging=auto"}, Stdin: diff, Interactive: true})
+	return err
+}
+
+func (a *Adapter) gitDiff(ctx context.Context, dir string, args ...string) (string, error) {
+	gitArgs := append([]string{"-C", dir, "diff", "--no-ext-diff"}, args...)
+	res, err := a.R.Run(ctx, runner.Spec{Name: "git", Args: gitArgs, Dir: dir})
+	return res.Stdout, err
 }
 
 // menuPrompt renders the action menu with the hotkey letters highlighted and
@@ -253,6 +342,7 @@ func (a *Adapter) menuPrompt(name string) string {
 	entries := strings.Join([]string{
 		item("m", "agit"),
 		a.Rep.Accent("[l]azygit"),
+		item("d", "iff"),
 		item("s", "kip"),
 		item("a", "i"),
 		item("c", "ommit"),
@@ -271,23 +361,60 @@ func (a *Adapter) continuePrompt() string {
 	return fmt.Sprintf("%s %s %s ", a.Rep.Arrow(), a.Rep.Dim("continue?"), entries)
 }
 
-// colorStatusLine colorizes a `git status --short` line: the staged column
-// (index) in green, the worktree column in red, and untracked entries dimmed.
-func (a *Adapter) colorStatusLine(line string) string {
-	if !a.Rep.Color() || len(line) < 3 {
-		return line
+func (a *Adapter) compactStatusLine(file changedFile) string {
+	label := compactStatus(file.Status)
+	path := file.displayPath()
+	if !a.Rep.Color() || label == "" {
+		if label == "" {
+			return path
+		}
+		return label + compactStatusSeparator(label) + path
 	}
-	x, y, rest := line[0:1], line[1:2], line[3:]
-	if x == "?" && y == "?" {
-		return a.Rep.Dim("?? " + rest)
+	plain := label + compactStatusSeparator(label) + path
+	if label == "??" {
+		return a.Rep.Dim(plain)
+	}
+	if len(file.Status) < 2 {
+		return plain
+	}
+	x, y := file.Status[0:1], file.Status[1:2]
+	if x != " " && y != " " {
+		return a.Rep.Good(x) + a.Rep.Bad(y) + " " + path
 	}
 	if x != " " {
-		x = a.Rep.Good(x)
+		return a.Rep.Good(x) + "  " + path
 	}
 	if y != " " {
-		y = a.Rep.Bad(y)
+		return a.Rep.Bad(y) + "  " + path
 	}
-	return x + y + " " + rest
+	return plain
+}
+
+func compactStatus(status string) string {
+	if len(status) < 2 {
+		return strings.TrimSpace(status)
+	}
+	x, y := status[0:1], status[1:2]
+	if x == "?" && y == "?" {
+		return "??"
+	}
+	if x != " " && y != " " {
+		return x + y
+	}
+	if x != " " {
+		return x
+	}
+	if y != " " {
+		return y
+	}
+	return strings.TrimSpace(status)
+}
+
+func compactStatusSeparator(label string) string {
+	if len(label) == 1 {
+		return "  "
+	}
+	return " "
 }
 
 // emacs opens fn (e.g. magit-status) for dir. With a reachable Emacs server it
