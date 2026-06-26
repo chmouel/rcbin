@@ -5,8 +5,9 @@ synchronizes [YADM](https://yadm.io) and Git repositories, manages dotfile
 symlinks and binaries, runs backups and OS/tool updates, reports a Waybar
 status, and runs diagnostics.
 
-It is a focused Go rewrite of a large Bash script. Conventions for contributors
-and agents are in [`AGENTS.md`](./AGENTS.md).
+It's very specific to my way of configuring my hosts, This used to be a large (hand written) Bash script and this has been vibe rewritted in Go. 
+
+Conventions for contributors and agents are in [`AGENTS.md`](./AGENTS.md).
 
 ## Install
 
