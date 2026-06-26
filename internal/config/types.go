@@ -1,8 +1,8 @@
 // Package config defines the layered configuration model for rc, loads and
-// merges the global TOML file with legacy host profiles, expands path variables,
+// merges the global TOML file with host profiles, expands path variables,
 // and validates the result into typed values shared by execution and diagnostics.
 //
-// Merge order is: built-in defaults, global TOML file, common legacy profile,
+// Merge order is: built-in defaults, global TOML file, common host profile,
 // lexically sorted multi-host profiles, then the exact host profile. Scalars
 // take the last specified value. Domain lists are keyed (links by target, bins by
 // target, repositories by path, tasks by name); later layers replace or extend
@@ -131,7 +131,7 @@ type DoctorConfig struct {
 }
 
 // File is the in-memory representation of any configuration layer. Global TOML
-// files populate roots and engine sections; legacy host profiles populate links,
+// files populate roots and engine sections; host profiles populate links,
 // bins, and repositories. Unset sections are ignored during merge.
 type File struct {
 	Version int `toml:"version"`

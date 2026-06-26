@@ -1,6 +1,6 @@
 # Migration notes from `rcold`
 
-This document is for maintainers and users moving from the legacy Bash script
+This document is for maintainers and users moving from the old Bash script
 (`rcold`) to the Go `rc` rewrite. It explains what the Go implementation keeps
 compatible, what intentionally differs, and what to check before relying on the
 new command on a workstation.
@@ -15,7 +15,7 @@ replacement for the old Bash CLI.
 The practical promise is:
 
 - global configuration is TOML;
-- host-specific configuration stays in the legacy YADM host tree;
+- host-specific configuration stays in the YADM host tree;
 - active host profiles under `~/.config/yadm/hosts` should validate and produce
   the expected links, binary links, repositories, and hooks;
 - the Go CLI uses subcommands instead of the old single-command flag interface.
@@ -30,7 +30,7 @@ The Go runtime reads the same selected host profile directories as `rcold`:
 
 Hidden directories such as `.old` and `.claude` are ignored.
 
-The following legacy profile files are supported:
+The following host profile files are supported:
 
 | Host profile path | Go behavior |
 | --- | --- |
@@ -89,7 +89,7 @@ host and they set the same target.
 ### Duplicate entries
 
 `rcold` effectively allows repeated link commands. The Go loader ignores exact
-duplicate legacy entries but rejects conflicting duplicates in the same profile.
+duplicate host entries but rejects conflicting duplicates in the same profile.
 
 This keeps accidental exact repeats working while surfacing real ambiguity.
 
@@ -124,7 +124,7 @@ different locations.
 
 ## Validation checklist
 
-Run the normal test suite after changing migration or legacy-profile behavior:
+Run the normal test suite after changing migration or host-profile behavior:
 
 ```bash
 go test ./...

@@ -59,8 +59,8 @@ internal/doctor/        diagnostic checks and summaries
   are produced by cobra and map to `2` automatically.
 - **Config is data.** Built-in defaults live in `internal/config/defaults.go` as
   structured data. Global configuration is TOML, while host profiles use the
-  legacy line-based files (`rc`, `chmouzies`, `repobins`, `extra-dirs`) parsed by
-  `internal/config`. Host profiles may also carry legacy payloads under
+  line-based host files (`rc`, `chmouzies`, `repobins`, `extra-dirs`) parsed by
+  `internal/config`. Host profiles may also carry host payloads under
   `emacs/`, `shell/`, and `bin/`; keep their targets compatible with `rcold`.
 - **Keep `examples/config.toml` in sync.** It is the user-facing reference for the
   full config schema. Whenever you change the config model (`internal/config`
@@ -80,14 +80,14 @@ internal/doctor/        diagnostic checks and summaries
 ## Configuration model (summary)
 
 Layers merge in this order: built-in defaults → global TOML file
-(`~/.config/rc/config.toml`) → `common` legacy profile → lexically sorted
+(`~/.config/rc/config.toml`) → `common` host profile → lexically sorted
 multi-host profiles → exact-host profile. Scalars are last-wins. Domain lists
 are keyed and later layers override earlier ones by key:
 
 - links by target, bins by target, repositories by path, tasks by name.
 
-Duplicate keys *within a single layer* are a conflict error. The legacy
-singleton payloads `emacs/init.el`, `shell/init.zsh`, and `shell/post.zsh` are an
+Duplicate keys *within a single layer* are a conflict error. The singleton host
+payloads `emacs/init.el`, `shell/init.zsh`, and `shell/post.zsh` are an
 exception to normal layer override semantics: the first matching profile wins to
 match `rcold`. Directory payloads (`shell/functions/*`, `bin/*`) keep normal
 later-profile override behavior.
@@ -145,12 +145,12 @@ imports.
   it is concurrency-safe for `-race`.
 - `internal/app` tests run the full command tree against a temporary `HOME` and
   an explicit `--host` so they are hermetic.
-- Host-profile tests should use synthetic legacy files under a temporary
+- Host-profile tests should use synthetic host files under a temporary
   `~/.config/yadm/hosts` root and validate through `config.Load`; do not depend
   on live machine-specific host files.
 
 ## Git
 
 This rewrite lives in its own repository. Do not commit, amend, or rewrite
-history unless explicitly asked. The legacy `~/.local/bin/rc` and the user's
+history unless explicitly asked. The old `~/.local/bin/rc` and the user's
 dotfiles are tracked by `yadm` (`yadm diff` / `yadm status`).

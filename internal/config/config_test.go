@@ -71,7 +71,7 @@ func TestEnvVarsOnlyExposeAllowedVariables(t *testing.T) {
 	}
 }
 
-func TestParseLegacyRCBasic(t *testing.T) {
+func TestParseHostRCBasic(t *testing.T) {
 	content := `atuin
 ?tmux
 pylint/pylintrc pylintrc
@@ -81,7 +81,7 @@ readline/inputrc ~/.inputrc
 ?$GOPATH/bin/goimports .local/bin/goimports
 # a comment
 `
-	links := parseLegacyRC(content, "")
+	links := parseHostRC(content, "")
 	byTarget := map[string]Link{}
 	for _, l := range links {
 		byTarget[l.Target] = l
@@ -107,7 +107,7 @@ readline/inputrc ~/.inputrc
 	}
 }
 
-func TestParseLegacyRCWithAssetsRoot(t *testing.T) {
+func TestParseHostRCWithAssetsRoot(t *testing.T) {
 	assets := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(assets, "pylint"), 0o755); err != nil {
 		t.Fatal(err)
@@ -115,19 +115,19 @@ func TestParseLegacyRCWithAssetsRoot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(assets, "pylint", "pylintrc"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	links := parseLegacyRC("pylint/pylintrc pylintrc\n", assets)
+	links := parseHostRC("pylint/pylintrc pylintrc\n", assets)
 	if links[0].SourceRoot != "rc" {
 		t.Errorf("with assets present, source should be rc: %+v", links[0])
 	}
 }
 
-func TestParseLegacyBins(t *testing.T) {
+func TestParseHostBins(t *testing.T) {
 	content := `git/gh-clone
 graphical/copy-path :: rf
 perso/x :: .config/zsh/funcs/$HOST/x
 ?maybe/missing
 `
-	bins := parseLegacyBinList(content, "chmouzies")
+	bins := parseHostBinList(content, "chmouzies")
 	if bins[0].SourceRoot != "chmouzies" || bins[0].Target != "gh-clone" {
 		t.Errorf("gh-clone: %+v", bins[0])
 	}
@@ -142,12 +142,12 @@ perso/x :: .config/zsh/funcs/$HOST/x
 	}
 }
 
-func TestParseLegacyExtraDirs(t *testing.T) {
+func TestParseHostExtraDirs(t *testing.T) {
 	content := `pac/infra
 perso/lazyworktree post_update={ make build }
 perso/x always={ echo hi | cat }
 `
-	repos := parseLegacyExtraDirs(content)
+	repos := parseHostExtraDirs(content)
 	if repos[0].Path != "pac/infra" || repos[0].Hooks.PostUpdate != nil {
 		t.Errorf("infra: %+v", repos[0])
 	}
@@ -159,7 +159,7 @@ perso/x always={ echo hi | cat }
 	}
 }
 
-func TestLoadLegacyHostProfiles(t *testing.T) {
+func TestLoadHostHostProfiles(t *testing.T) {
 	home := t.TempDir()
 	hosts := filepath.Join(home, ".config", "yadm", "hosts")
 	common := filepath.Join(hosts, "common")
@@ -229,7 +229,7 @@ func TestLoadLegacyHostProfiles(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyHostPayloadsAndSystemd(t *testing.T) {
+func TestLoadHostHostPayloadsAndSystemd(t *testing.T) {
 	home := t.TempDir()
 	hosts := filepath.Join(home, ".config", "yadm", "hosts")
 	common := filepath.Join(hosts, "common")
@@ -257,9 +257,10 @@ func TestLoadLegacyHostPayloadsAndSystemd(t *testing.T) {
 	}
 
 	cfg, err := Load(Options{
-		HostsRoot: hosts,
-		Hostname:  "ibra",
-		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -301,7 +302,7 @@ func TestLoadLegacyHostPayloadsAndSystemd(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyRepoBinsGOPATHFallback(t *testing.T) {
+func TestLoadHostRepoBinsGOPATHFallback(t *testing.T) {
 	home := t.TempDir()
 	gopath := filepath.Join(home, "go")
 	hosts := filepath.Join(home, ".config", "yadm", "hosts")
@@ -316,9 +317,10 @@ func TestLoadLegacyRepoBinsGOPATHFallback(t *testing.T) {
 	}
 
 	cfg, err := Load(Options{
-		HostsRoot: hosts,
-		Hostname:  "ibra",
-		Vars:      Vars{"HOME": home, "HOST": "ibra", "GOPATH": gopath},
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra", "GOPATH": gopath},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -353,9 +355,10 @@ func TestLoadIgnoresHostTOML(t *testing.T) {
 	}
 
 	cfg, err := Load(Options{
-		HostsRoot: hosts,
-		Hostname:  "ibra",
-		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -365,7 +368,7 @@ func TestLoadIgnoresHostTOML(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyDuplicateTargetsError(t *testing.T) {
+func TestLoadHostDuplicateTargetsError(t *testing.T) {
 	home := t.TempDir()
 	hosts := filepath.Join(home, ".config", "yadm", "hosts")
 	profile := filepath.Join(hosts, "common")
@@ -377,16 +380,17 @@ func TestLoadLegacyDuplicateTargetsError(t *testing.T) {
 	}
 
 	_, err := Load(Options{
-		HostsRoot: hosts,
-		Hostname:  "ibra",
-		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "duplicate link target") {
 		t.Fatalf("expected duplicate link target error, got %v", err)
 	}
 }
 
-func TestLoadLegacyExactDuplicateTargetsAreIgnored(t *testing.T) {
+func TestLoadHostExactDuplicateTargetsAreIgnored(t *testing.T) {
 	home := t.TempDir()
 	hosts := filepath.Join(home, ".config", "yadm", "hosts")
 	profile := filepath.Join(hosts, "common")
@@ -398,9 +402,10 @@ func TestLoadLegacyExactDuplicateTargetsAreIgnored(t *testing.T) {
 	}
 
 	cfg, err := Load(Options{
-		HostsRoot: hosts,
-		Hostname:  "ibra",
-		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -410,7 +415,7 @@ func TestLoadLegacyExactDuplicateTargetsAreIgnored(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyDuplicateBinTargetsError(t *testing.T) {
+func TestLoadHostDuplicateBinTargetsError(t *testing.T) {
 	home := t.TempDir()
 	hosts := filepath.Join(home, ".config", "yadm", "hosts")
 	profile := filepath.Join(hosts, "common")
@@ -422,9 +427,10 @@ func TestLoadLegacyDuplicateBinTargetsError(t *testing.T) {
 	}
 
 	_, err := Load(Options{
-		HostsRoot: hosts,
-		Hostname:  "ibra",
-		Vars:      Vars{"HOME": home, "HOST": "ibra"},
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "duplicate bin target") {
 		t.Fatalf("expected duplicate bin target error, got %v", err)

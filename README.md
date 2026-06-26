@@ -99,7 +99,7 @@ permanently. The Homebrew formula installs completions automatically.
 ## Configuration
 
 Configuration is layered. Global configuration is TOML, while host/profile
-configuration uses the legacy line-based files under the YADM host root. Layers
+configuration uses the line-based host files under the YADM host root. Layers
 merge in this order:
 
 1. Built-in defaults (encoded in the binary).
@@ -126,7 +126,7 @@ cp examples/config.toml ~/.config/rc/config.toml
 # then edit the provider, repositories, yadm remote, roots, and backups
 ```
 
-A minimal host profile can use these legacy files:
+A minimal host profile can use these host files:
 
 ```text
 # ~/.config/yadm/hosts/common/rc

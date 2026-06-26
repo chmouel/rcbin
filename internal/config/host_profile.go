@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-type legacyProfileContext struct {
+type hostProfileContext struct {
 	Roots               map[string]string
 	Vars                Vars
 	Hostname            string
@@ -16,36 +16,36 @@ type legacyProfileContext struct {
 	IncludeHostPayloads bool
 }
 
-func readLegacyProfile(profileDir string, ctx legacyProfileContext) (File, bool, error) {
+func readHostProfile(profileDir string, ctx hostProfileContext) (File, bool, error) {
 	file := File{Version: 1}
 	found := false
 
-	if content, ok, err := readLegacyFile(filepath.Join(profileDir, "rc")); err != nil {
+	if content, ok, err := readHostFile(filepath.Join(profileDir, "rc")); err != nil {
 		return File{}, false, err
 	} else if ok {
 		found = true
-		file.Links = append(file.Links, parseLegacyRC(content, ctx.Roots["rc"])...)
+		file.Links = append(file.Links, parseHostRC(content, ctx.Roots["rc"])...)
 	}
-	if content, ok, err := readLegacyFile(filepath.Join(profileDir, "chmouzies")); err != nil {
+	if content, ok, err := readHostFile(filepath.Join(profileDir, "chmouzies")); err != nil {
 		return File{}, false, err
 	} else if ok {
 		found = true
-		file.Bins = append(file.Bins, parseLegacyBinList(content, "chmouzies")...)
+		file.Bins = append(file.Bins, parseHostBinList(content, "chmouzies")...)
 	}
-	if content, ok, err := readLegacyFile(filepath.Join(profileDir, "repobins")); err != nil {
+	if content, ok, err := readHostFile(filepath.Join(profileDir, "repobins")); err != nil {
 		return File{}, false, err
 	} else if ok {
 		found = true
-		file.Bins = append(file.Bins, parseLegacyRepoBins(content, ctx.Roots, ctx.Vars)...)
+		file.Bins = append(file.Bins, parseHostRepoBins(content, ctx.Roots, ctx.Vars)...)
 	}
-	if content, ok, err := readLegacyFile(filepath.Join(profileDir, "extra-dirs")); err != nil {
+	if content, ok, err := readHostFile(filepath.Join(profileDir, "extra-dirs")); err != nil {
 		return File{}, false, err
 	} else if ok {
 		found = true
-		file.Repositories = append(file.Repositories, parseLegacyExtraDirs(content)...)
+		file.Repositories = append(file.Repositories, parseHostExtraDirs(content)...)
 	}
 	if ctx.IncludeHostPayloads {
-		if ok, err := appendLegacyHostPayloads(&file, profileDir, ctx); err != nil {
+		if ok, err := appendHostPayloads(&file, profileDir, ctx); err != nil {
 			return File{}, false, err
 		} else if ok {
 			found = true
@@ -56,14 +56,14 @@ func readLegacyProfile(profileDir string, ctx legacyProfileContext) (File, bool,
 		return File{}, false, nil
 	}
 	var err error
-	file, err = dedupeLegacyDuplicates(filepath.Base(profileDir), file)
+	file, err = dedupeHostDuplicates(filepath.Base(profileDir), file)
 	if err != nil {
 		return File{}, false, err
 	}
 	return file, true, nil
 }
 
-func readLegacyFile(path string) (string, bool, error) {
+func readHostFile(path string) (string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err == nil {
 		return string(data), true, nil
@@ -74,13 +74,13 @@ func readLegacyFile(path string) (string, bool, error) {
 	return "", false, fmt.Errorf("reading %s: %w", path, err)
 }
 
-func dedupeLegacyDuplicates(profile string, file File) (File, error) {
+func dedupeHostDuplicates(profile string, file File) (File, error) {
 	linkTargets := map[string]Link{}
 	links := make([]Link, 0, len(file.Links))
 	for _, link := range file.Links {
 		if prev, ok := linkTargets[link.Target]; ok {
 			if prev != link {
-				return File{}, fmt.Errorf("legacy profile %q: duplicate link target %q", profile, link.Target)
+				return File{}, fmt.Errorf("host profile %q: duplicate link target %q", profile, link.Target)
 			}
 			continue
 		}
@@ -94,7 +94,7 @@ func dedupeLegacyDuplicates(profile string, file File) (File, error) {
 	for _, bin := range file.Bins {
 		if prev, ok := binTargets[bin.Target]; ok {
 			if prev != bin {
-				return File{}, fmt.Errorf("legacy profile %q: duplicate bin target %q", profile, bin.Target)
+				return File{}, fmt.Errorf("host profile %q: duplicate bin target %q", profile, bin.Target)
 			}
 			continue
 		}
@@ -105,20 +105,20 @@ func dedupeLegacyDuplicates(profile string, file File) (File, error) {
 	return file, nil
 }
 
-func appendLegacyHostPayloads(file *File, profileDir string, ctx legacyProfileContext) (bool, error) {
+func appendHostPayloads(file *File, profileDir string, ctx hostProfileContext) (bool, error) {
 	found := false
 
-	if appendLegacySingletonLink(file, profileDir, "emacs/init.el", filepath.Join(ctx.Roots["emacs"], "lisp", "init-local.el"), ctx.ClaimedSingletons) {
+	if appendHostSingletonLink(file, profileDir, "emacs/init.el", filepath.Join(ctx.Roots["emacs"], "lisp", "init-local.el"), ctx.ClaimedSingletons) {
 		found = true
 	}
-	if appendLegacySingletonLink(file, profileDir, "shell/init.zsh", filepath.Join(ctx.Roots["zsh"], "hosts", ctx.Hostname+".sh"), ctx.ClaimedSingletons) {
+	if appendHostSingletonLink(file, profileDir, "shell/init.zsh", filepath.Join(ctx.Roots["zsh"], "hosts", ctx.Hostname+".sh"), ctx.ClaimedSingletons) {
 		found = true
 	}
-	if appendLegacySingletonLink(file, profileDir, "shell/post.zsh", filepath.Join(ctx.Roots["zsh"], "hosts", ctx.Hostname+"-post.sh"), ctx.ClaimedSingletons) {
+	if appendHostSingletonLink(file, profileDir, "shell/post.zsh", filepath.Join(ctx.Roots["zsh"], "hosts", ctx.Hostname+"-post.sh"), ctx.ClaimedSingletons) {
 		found = true
 	}
 
-	if ok, err := appendLegacyDirLinks(
+	if ok, err := appendHostDirLinks(
 		file,
 		filepath.Join(profileDir, "shell", "functions"),
 		filepath.Join(ctx.Roots["zsh"], "functions", "hosts", ctx.Hostname),
@@ -128,7 +128,7 @@ func appendLegacyHostPayloads(file *File, profileDir string, ctx legacyProfileCo
 		found = true
 	}
 
-	if ok, err := appendLegacyDirBins(file, filepath.Join(profileDir, "bin")); err != nil {
+	if ok, err := appendHostDirBins(file, filepath.Join(profileDir, "bin")); err != nil {
 		return false, err
 	} else if ok {
 		found = true
@@ -137,7 +137,7 @@ func appendLegacyHostPayloads(file *File, profileDir string, ctx legacyProfileCo
 	return found, nil
 }
 
-func appendLegacySingletonLink(file *File, profileDir, rel, target string, claimed map[string]struct{}) bool {
+func appendHostSingletonLink(file *File, profileDir, rel, target string, claimed map[string]struct{}) bool {
 	if target == "" {
 		return false
 	}
@@ -153,8 +153,8 @@ func appendLegacySingletonLink(file *File, profileDir, rel, target string, claim
 	return true
 }
 
-func appendLegacyDirLinks(file *File, sourceDir, targetDir string) (bool, error) {
-	entries, err := legacyPayloadEntries(sourceDir)
+func appendHostDirLinks(file *File, sourceDir, targetDir string) (bool, error) {
+	entries, err := hostPayloadEntries(sourceDir)
 	if err != nil || len(entries) == 0 {
 		return false, err
 	}
@@ -167,8 +167,8 @@ func appendLegacyDirLinks(file *File, sourceDir, targetDir string) (bool, error)
 	return true, nil
 }
 
-func appendLegacyDirBins(file *File, sourceDir string) (bool, error) {
-	entries, err := legacyPayloadEntries(sourceDir)
+func appendHostDirBins(file *File, sourceDir string) (bool, error) {
+	entries, err := hostPayloadEntries(sourceDir)
 	if err != nil || len(entries) == 0 {
 		return false, err
 	}
@@ -181,7 +181,7 @@ func appendLegacyDirBins(file *File, sourceDir string) (bool, error) {
 	return true, nil
 }
 
-func legacyPayloadEntries(dir string) ([]string, error) {
+func hostPayloadEntries(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -199,7 +199,7 @@ func legacyPayloadEntries(dir string) ([]string, error) {
 	return out, nil
 }
 
-func readLegacySystemdLinks(roots map[string]string) (File, bool, error) {
+func readHostSystemdLinks(roots map[string]string) (File, bool, error) {
 	rcRoot := roots["rc"]
 	targetDir := roots["systemd_user"]
 	if rcRoot == "" || targetDir == "" {
@@ -211,38 +211,38 @@ func readLegacySystemdLinks(roots map[string]string) (File, bool, error) {
 	}
 
 	file := File{Version: 1}
-	found, err := appendLegacyDirLinks(&file, sourceDir, targetDir)
+	found, err := appendHostDirLinks(&file, sourceDir, targetDir)
 	if err != nil || !found {
 		return File{}, false, err
 	}
 	return file, true, nil
 }
 
-// convertLegacyVars rewrites legacy "$NAME" references into "${NAME}" form.
+// convertHostVars rewrites host "$NAME" references into "${NAME}" form.
 // Existing "${NAME}" references and a leading "~" are left untouched.
-func convertLegacyVars(s string) string {
-	return legacyVar.ReplaceAllStringFunc(s, func(m string) string {
+func convertHostVars(s string) string {
+	return hostVar.ReplaceAllStringFunc(s, func(m string) string {
 		name := m[1:]
 		return "${" + name + "}"
 	})
 }
 
-var legacyVar = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]+)`)
+var hostVar = regexp.MustCompile(`\$([A-Za-z_][A-Za-z0-9_]+)`)
 
-func isLegacyAbsSymbolic(s string) bool {
+func isHostAbsSymbolic(s string) bool {
 	return strings.HasPrefix(s, "/") || strings.HasPrefix(s, "~") || strings.HasPrefix(s, "${")
 }
 
-func underLegacyHomeSymbolic(s string) bool {
+func underHostHomeSymbolic(s string) bool {
 	return strings.HasPrefix(s, "~") || strings.HasPrefix(s, "${HOME}")
 }
 
-func classifyLegacyTarget(rest string) (target string, privileged bool) {
-	d := convertLegacyVars(rest)
+func classifyHostTarget(rest string) (target string, privileged bool) {
+	d := convertHostVars(rest)
 	switch {
 	case strings.HasPrefix(d, "/"):
 		return d, true
-	case underLegacyHomeSymbolic(d):
+	case underHostHomeSymbolic(d):
 		return d, false
 	case strings.HasPrefix(d, "${"):
 		return d, false
@@ -253,7 +253,7 @@ func classifyLegacyTarget(rest string) (target string, privileged bool) {
 	}
 }
 
-func parseLegacyRC(content, rcAssetsRoot string) []Link {
+func parseHostRC(content, rcAssetsRoot string) []Link {
 	var links []Link
 
 	for _, raw := range strings.Split(content, "\n") {
@@ -269,19 +269,19 @@ func parseLegacyRC(content, rcAssetsRoot string) []Link {
 
 		left := line
 		rest := ""
-		if i := strings.IndexFunc(line, isLegacySpace); i >= 0 {
+		if i := strings.IndexFunc(line, isHostSpace); i >= 0 {
 			left = line[:i]
 			rest = strings.TrimSpace(line[i+1:])
 		}
 
-		root, source := classifyLegacyRCSource(left, rcAssetsRoot)
+		root, source := classifyHostRCSource(left, rcAssetsRoot)
 
 		var target string
 		var privileged bool
 		if rest == "" {
 			target = "~/.config/" + filepath.Base(left)
 		} else {
-			target, privileged = classifyLegacyTarget(rest)
+			target, privileged = classifyHostTarget(rest)
 		}
 
 		links = append(links, Link{
@@ -295,7 +295,7 @@ func parseLegacyRC(content, rcAssetsRoot string) []Link {
 	return links
 }
 
-func classifyLegacyRCSource(left, rcAssetsRoot string) (root, source string) {
+func classifyHostRCSource(left, rcAssetsRoot string) (root, source string) {
 	if !strings.Contains(left, "/") {
 		return "rc", left
 	}
@@ -304,14 +304,14 @@ func classifyLegacyRCSource(left, rcAssetsRoot string) (root, source string) {
 			return "rc", left
 		}
 	}
-	el := convertLegacyVars(left)
-	if isLegacyAbsSymbolic(el) {
+	el := convertHostVars(left)
+	if isHostAbsSymbolic(el) {
 		return "", el
 	}
 	return "home", left
 }
 
-func parseLegacyBinList(content, sourceRoot string) []Bin {
+func parseHostBinList(content, sourceRoot string) []Bin {
 	var bins []Bin
 	for _, raw := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(raw)
@@ -335,7 +335,7 @@ func parseLegacyBinList(content, sourceRoot string) []Bin {
 			source = strings.TrimSpace(line[:i])
 			right := strings.TrimSpace(line[i+4:])
 			if strings.Contains(right, "/") {
-				t, _ := classifyLegacyTarget(right)
+				t, _ := classifyHostTarget(right)
 				target = t
 			} else {
 				target = right
@@ -347,7 +347,7 @@ func parseLegacyBinList(content, sourceRoot string) []Bin {
 
 		bins = append(bins, Bin{
 			SourceRoot:         sourceRoot,
-			Source:             convertLegacyVars(source),
+			Source:             convertHostVars(source),
 			Target:             target,
 			Optional:           optional,
 			DiscoverCompletion: true,
@@ -356,18 +356,18 @@ func parseLegacyBinList(content, sourceRoot string) []Bin {
 	return bins
 }
 
-func parseLegacyRepoBins(content string, roots map[string]string, vars Vars) []Bin {
-	bins := parseLegacyBinList(content, "repo_base")
+func parseHostRepoBins(content string, roots map[string]string, vars Vars) []Bin {
+	bins := parseHostBinList(content, "repo_base")
 	for i := range bins {
-		root, source := classifyLegacyRepoBinSource(bins[i].Source, roots, vars)
+		root, source := classifyHostRepoBinSource(bins[i].Source, roots, vars)
 		bins[i].SourceRoot = root
 		bins[i].Source = source
 	}
 	return bins
 }
 
-func classifyLegacyRepoBinSource(source string, roots map[string]string, vars Vars) (sourceRoot, resolvedSource string) {
-	converted := convertLegacyVars(source)
+func classifyHostRepoBinSource(source string, roots map[string]string, vars Vars) (sourceRoot, resolvedSource string) {
+	converted := convertHostVars(source)
 	expanded, err := expand(converted, vars)
 	if err != nil {
 		return "repo_base", converted
@@ -395,9 +395,9 @@ func classifyLegacyRepoBinSource(source string, roots map[string]string, vars Va
 	return "repo_base", converted
 }
 
-var legacyHookRe = regexp.MustCompile(`([a-zA-Z_]+)=\{([^}]*)\}`)
+var hostHookRe = regexp.MustCompile(`([a-zA-Z_]+)=\{([^}]*)\}`)
 
-func parseLegacyExtraDirs(content string) []Repository {
+func parseHostExtraDirs(content string) []Repository {
 	var repos []Repository
 	for _, raw := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(raw)
@@ -406,15 +406,15 @@ func parseLegacyExtraDirs(content string) []Repository {
 		}
 		dir := line
 		rest := ""
-		if i := strings.IndexFunc(line, isLegacySpace); i >= 0 {
+		if i := strings.IndexFunc(line, isHostSpace); i >= 0 {
 			dir = line[:i]
 			rest = line[i+1:]
 		}
 
-		repo := Repository{Path: convertLegacyVars(dir)}
-		for _, m := range legacyHookRe.FindAllStringSubmatch(rest, -1) {
+		repo := Repository{Path: convertHostVars(dir)}
+		for _, m := range hostHookRe.FindAllStringSubmatch(rest, -1) {
 			name := m[1]
-			cmd := legacyToCommand(strings.TrimSpace(m[2]))
+			cmd := hostToCommand(strings.TrimSpace(m[2]))
 			switch name {
 			case "post_update":
 				repo.Hooks.PostUpdate = &cmd
@@ -427,16 +427,16 @@ func parseLegacyExtraDirs(content string) []Repository {
 	return repos
 }
 
-var legacyShellMeta = regexp.MustCompile(`[|&;<>$(){}*?\[\]` + "`" + `]`)
+var hostShellMeta = regexp.MustCompile(`[|&;<>$(){}*?\[\]` + "`" + `]`)
 
-func legacyToCommand(body string) Command {
+func hostToCommand(body string) Command {
 	if body == "" {
 		return Command{}
 	}
-	if legacyShellMeta.MatchString(body) {
+	if hostShellMeta.MatchString(body) {
 		return Command{Shell: body}
 	}
 	return Command{Argv: strings.Fields(body)}
 }
 
-func isLegacySpace(r rune) bool { return r == ' ' || r == '\t' }
+func isHostSpace(r rune) bool { return r == ' ' || r == '\t' }
