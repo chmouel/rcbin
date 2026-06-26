@@ -34,7 +34,6 @@ internal/yadm/          YADM status and synchronization
 internal/commitui/      lazygit / Emacs / aicommit / direct commit / prompt
 internal/maintenance/   backup and update task engines
 internal/doctor/        diagnostic checks and summaries
-internal/migrate/       legacy line-based config -> TOML overlays (migration only)
 ```
 
 ## Core conventions
@@ -59,8 +58,10 @@ internal/migrate/       legacy line-based config -> TOML overlays (migration onl
   command's `RunE` with `op(err)`; flag-parsing and argument-validation errors
   are produced by cobra and map to `2` automatically.
 - **Config is data.** Built-in defaults live in `internal/config/defaults.go` as
-  structured data. The runtime never parses the legacy formats; only
-  `internal/migrate` understands them.
+  structured data. Global configuration is TOML, while host profiles use the
+  legacy line-based files (`rc`, `chmouzies`, `repobins`, `extra-dirs`) parsed by
+  `internal/config`. Host profiles may also carry legacy payloads under
+  `emacs/`, `shell/`, and `bin/`; keep their targets compatible with `rcold`.
 - **Keep `examples/config.toml` in sync.** It is the user-facing reference for the
   full config schema. Whenever you change the config model (`internal/config`
   types, defaults, validation, expansion, or merge behavior) or add/rename a
@@ -78,14 +79,18 @@ internal/migrate/       legacy line-based config -> TOML overlays (migration onl
 
 ## Configuration model (summary)
 
-Layers merge in this order: built-in defaults → global file
-(`~/.config/rc/config.toml`) → `common` overlay → lexically sorted multi-host
-overlays → exact-host overlay. Scalars are last-wins. Domain lists are keyed and
-later layers override earlier ones by key:
+Layers merge in this order: built-in defaults → global TOML file
+(`~/.config/rc/config.toml`) → `common` legacy profile → lexically sorted
+multi-host profiles → exact-host profile. Scalars are last-wins. Domain lists
+are keyed and later layers override earlier ones by key:
 
 - links by target, bins by target, repositories by path, tasks by name.
 
-Duplicate keys *within a single layer* are a conflict error.
+Duplicate keys *within a single layer* are a conflict error. The legacy
+singleton payloads `emacs/init.el`, `shell/init.zsh`, and `shell/post.zsh` are an
+exception to normal layer override semantics: the first matching profile wins to
+match `rcold`. Directory payloads (`shell/functions/*`, `bin/*`) keep normal
+later-profile override behavior.
 
 ## Build, test, lint
 
@@ -140,10 +145,9 @@ imports.
   it is concurrency-safe for `-race`.
 - `internal/app` tests run the full command tree against a temporary `HOME` and
   an explicit `--host` so they are hermetic.
-- `internal/migrate` has synthetic golden tests plus a round-trip test that
-  converts the live `~/.config/yadm/hosts` files (when present) and validates the
-  generated TOML through `config.Build`. The live test skips when those files are
-  absent — do not make it machine-dependent.
+- Host-profile tests should use synthetic legacy files under a temporary
+  `~/.config/yadm/hosts` root and validate through `config.Load`; do not depend
+  on live machine-specific host files.
 
 ## Git
 

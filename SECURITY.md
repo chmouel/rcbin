@@ -28,5 +28,5 @@ coordinated before any public disclosure.
   defined in your configuration, and
 - reads and writes files at user-specified paths.
 
-Configuration is therefore trusted input. Only run `rc` with configuration you
-control, and review overlays produced by `rc migrate` before relying on them.
+Configuration is therefore trusted input. Only run `rc` with configuration and
+host profile files you control.

@@ -35,7 +35,6 @@ rc update [TASK...]
 rc doctor [--offline]
 rc run
 rc config validate
-rc migrate --legacy-root PATH --output-root PATH
 rc completion [bash|zsh|fish|powershell]
 ```
 
@@ -99,18 +98,22 @@ permanently. The Homebrew formula installs completions automatically.
 
 ## Configuration
 
-Configuration is layered TOML. Layers merge in this order:
+Configuration is layered. Global configuration is TOML, while host/profile
+configuration uses the legacy line-based files under the YADM host root. Layers
+merge in this order:
 
 1. Built-in defaults (encoded in the binary).
 2. Global file: `~/.config/rc/config.toml` (honors `XDG_CONFIG_HOME`).
-3. `common` host overlay.
-4. Lexically sorted multi-host overlays (directories named like `hostA,hostB`).
-5. The exact-host overlay.
+3. `common` host profile.
+4. Lexically sorted multi-host profiles (directories named like `hostA,hostB`).
+5. The exact-host profile.
 
-Host overlays live under `~/.config/yadm/hosts/<profile>/rc.toml` by default.
+Host profiles live under `~/.config/yadm/hosts/<profile>` by default.
 Scalars use the last specified value. Domain lists are keyed — links by target,
 binaries by target, repositories by path, tasks by name — so later layers
 override earlier ones deterministically, giving the exact host top priority.
+See [`MIGRATION.md`](./MIGRATION.md) for the precise compatibility notes and
+known differences from `rcold`.
 
 The built-in defaults are deliberately neutral: they provide generic roots,
 sync/tool/doctor settings, and OS/tool update tasks, but **no** Git provider,
@@ -123,28 +126,49 @@ cp examples/config.toml ~/.config/rc/config.toml
 # then edit the provider, repositories, yadm remote, roots, and backups
 ```
 
-A minimal host overlay:
+A minimal host profile can use these legacy files:
 
-```toml
-version = 1
-
-[[links]]
-source_root = "rc"
-source = "git"
-target = "~/.config/git"
-
-[[bins]]
-source_root = "rc"
-source = "git/gh-clone"
-target = "gh-clone"
-discover_completion = true
-
-[[repositories]]
-path = "perso/lazyworktree"
-
-[repositories.hooks.post_update]
-argv = ["make", "build"]
+```text
+# ~/.config/yadm/hosts/common/rc
+git
+readline/inputrc ~/.inputrc
+.local/share/desktop-config/krb5/krb5.conf /etc/krb5.conf
+?$GOPATH/bin/goimports .local/bin/goimports
 ```
+
+```text
+# ~/.config/yadm/hosts/common/chmouzies
+git/gh-clone
+graphical/copy-path :: rf
+perso/x :: .config/zsh/funcs/$HOST/x
+```
+
+```text
+# ~/.config/yadm/hosts/common/repobins
+perso/myrepo/bin/tool
+```
+
+```text
+# ~/.config/yadm/hosts/common/extra-dirs
+perso/lazyworktree post_update={ make build }
+perso/x always={ echo hi | cat }
+```
+
+Host profiles may also carry payload files that are linked directly:
+
+| Host path | Linked target |
+| --- | --- |
+| `emacs/init.el` | `${emacs}/lisp/init-local.el` |
+| `shell/init.zsh` | `${zsh}/hosts/${HOST}.sh` |
+| `shell/post.zsh` | `${zsh}/hosts/${HOST}-post.sh` |
+| `shell/functions/*` | `${zsh}/functions/hosts/${HOST}/<name>` |
+| `bin/*` | `${desktop_bin}/<name>` |
+
+For singleton files (`emacs/init.el`, `shell/init.zsh`, `shell/post.zsh`), the
+first matching profile wins, matching the old script. For directories such as
+`shell/functions` and `bin`, later matching profiles override earlier files with
+the same basename. During `rc link`, files under `${rc}/systemd` are also linked
+into `${systemd_user}` when that target directory exists.
 
 Paths support a leading `~` and `${HOME}`, `${HOST}`, and `${GOPATH}` anywhere.
 An unset referenced variable is a validation error. Commands prefer
@@ -156,19 +180,6 @@ Validate a merged configuration with:
 ```bash
 rc config validate
 ```
-
-## Migrating from the legacy formats
-
-The old script read several bespoke line-based files (`rc`, `chmouzies`,
-`repobins`, `extra-dirs`). Convert them to TOML overlays:
-
-```bash
-rc migrate --legacy-root ~/.config/yadm/hosts --output-root ~/.config/yadm/hosts
-```
-
-This writes a generated `rc.toml` per profile with a header and warning comments.
-Review the output before relying on it; the runtime never reads the legacy
-formats.
 
 ## Development
 
