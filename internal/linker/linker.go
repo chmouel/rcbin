@@ -44,6 +44,9 @@ func New(r runner.Runner, rep *output.Reporter, home, manifestPath string, dryRu
 // discovered Zsh completions for binaries.
 func (l *Linker) BuildPlan(cfg *config.Config) []Plan {
 	var plans []Plan
+	if plan, ok := zshRootPlan(cfg); ok {
+		plans = append(plans, plan)
+	}
 	for _, link := range cfg.Links {
 		plans = append(plans, Plan{
 			Source:     link.Source,
@@ -63,11 +66,14 @@ func (l *Linker) BuildPlan(cfg *config.Config) []Plan {
 			Kind:     "bin",
 		})
 		if bin.DiscoverCompletion {
-			comp := filepath.Join(filepath.Dir(bin.Source), "_"+filepath.Base(bin.Source))
-			if _, err := l.FS.Lstat(comp); err == nil {
+			for _, base := range completionBases(bin) {
+				comp := filepath.Join(filepath.Dir(bin.Source), "_"+base)
+				if _, err := l.FS.Lstat(comp); err != nil {
+					continue
+				}
 				plans = append(plans, Plan{
 					Source:   comp,
-					Target:   filepath.Join(zshHostDir, "_"+filepath.Base(bin.Source)),
+					Target:   filepath.Join(zshHostDir, "_"+base),
 					Optional: true,
 					Kind:     "completion",
 				})
@@ -75,6 +81,28 @@ func (l *Linker) BuildPlan(cfg *config.Config) []Plan {
 		}
 	}
 	return plans
+}
+
+func zshRootPlan(cfg *config.Config) (Plan, bool) {
+	rcRoot := cfg.Roots["rc"]
+	zshRoot := cfg.Roots["zsh"]
+	if rcRoot == "" || zshRoot == "" {
+		return Plan{}, false
+	}
+	return Plan{
+		Source: filepath.Join(rcRoot, "zsh"),
+		Target: zshRoot,
+		Kind:   "link",
+	}, true
+}
+
+func completionBases(bin config.ResolvedBin) []string {
+	sourceBase := filepath.Base(bin.Source)
+	targetBase := filepath.Base(bin.Target)
+	if sourceBase == targetBase {
+		return []string{sourceBase}
+	}
+	return []string{sourceBase, targetBase}
 }
 
 // Apply validates and applies the plan, updating the managed-link manifest.

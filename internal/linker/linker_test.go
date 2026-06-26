@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chmouel/rc/internal/config"
 	"github.com/chmouel/rc/internal/output"
 	"github.com/chmouel/rc/internal/runner"
 )
@@ -192,6 +193,151 @@ func TestRelativeLink(t *testing.T) {
 	}
 	if dest != "../src/file" {
 		t.Errorf("unexpected relative target %q", dest)
+	}
+}
+
+func TestBuildPlanIncludesZshRootLink(t *testing.T) {
+	home := t.TempDir()
+	rcRoot := filepath.Join(home, ".local", "share", "rc")
+	zshRoot := filepath.Join(home, ".config", "zsh")
+	cfg := &config.Config{
+		Roots: map[string]string{
+			"rc":  rcRoot,
+			"zsh": zshRoot,
+		},
+	}
+
+	l, _ := newTestLinker(t, home, false)
+	plans := l.BuildPlan(cfg)
+	if len(plans) != 1 {
+		t.Fatalf("expected one zsh root plan, got %d: %+v", len(plans), plans)
+	}
+	if got, want := plans[0].Source, filepath.Join(rcRoot, "zsh"); got != want {
+		t.Errorf("zsh root source = %q, want %q", got, want)
+	}
+	if got := plans[0].Target; got != zshRoot {
+		t.Errorf("zsh root target = %q, want %q", got, zshRoot)
+	}
+}
+
+func TestZshRootLinkPrecedesNestedShellLinks(t *testing.T) {
+	home := t.TempDir()
+	rcRoot := filepath.Join(home, ".local", "share", "rc")
+	zshSource := filepath.Join(rcRoot, "zsh")
+	hostInit := filepath.Join(home, ".config", "yadm", "hosts", "common", "shell", "init.zsh")
+	if err := os.MkdirAll(zshSource, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, hostInit, "host init")
+
+	cfg := &config.Config{
+		Hostname: "ibra",
+		Roots: map[string]string{
+			"rc":  rcRoot,
+			"zsh": filepath.Join(home, ".config", "zsh"),
+		},
+		Links: []config.ResolvedLink{{
+			Source: hostInit,
+			Target: filepath.Join(home, ".config", "zsh", "hosts", "ibra.sh"),
+		}},
+	}
+
+	l, _ := newTestLinker(t, home, false)
+	plans := parentFirst(l.BuildPlan(cfg))
+	if got, want := plans[0].Target, cfg.Roots["zsh"]; got != want {
+		t.Fatalf("zsh root link must be planned before nested host links: first target=%q want %q", got, want)
+	}
+	if err := l.Apply(context.Background(), plans); err != nil {
+		t.Fatal(err)
+	}
+	if dest, err := os.Readlink(cfg.Roots["zsh"]); err != nil {
+		t.Fatalf("zsh root should be a symlink: %v", err)
+	} else if dest != filepath.Join("..", ".local", "share", "rc", "zsh") {
+		t.Fatalf("zsh root link = %q, want relative link to rc zsh", dest)
+	}
+	if _, err := os.Lstat(filepath.Join(cfg.Roots["zsh"], "hosts", "ibra.sh")); err != nil {
+		t.Fatalf("nested host shell link should be created under zsh root: %v", err)
+	}
+}
+
+func TestZshRootRealDirectoryIsRefused(t *testing.T) {
+	home := t.TempDir()
+	rcRoot := filepath.Join(home, ".local", "share", "rc")
+	zshRoot := filepath.Join(home, ".config", "zsh")
+	if err := os.MkdirAll(filepath.Join(rcRoot, "zsh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(zshRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	l, _ := newTestLinker(t, home, false)
+	err := l.Apply(context.Background(), l.BuildPlan(&config.Config{
+		Roots: map[string]string{
+			"rc":  rcRoot,
+			"zsh": zshRoot,
+		},
+	}))
+	if err == nil || !strings.Contains(err.Error(), "exists and is not a symlink") {
+		t.Fatalf("expected real zsh directory to be refused, got %v", err)
+	}
+	if info, err := os.Lstat(zshRoot); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("real zsh directory must remain untouched, info=%v err=%v", info, err)
+	}
+}
+
+func TestZshRootDryRunDoesNotMutate(t *testing.T) {
+	home := t.TempDir()
+	rcRoot := filepath.Join(home, ".local", "share", "rc")
+	zshRoot := filepath.Join(home, ".config", "zsh")
+	if err := os.MkdirAll(filepath.Join(rcRoot, "zsh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	l, _ := newTestLinker(t, home, true)
+	if err := l.Apply(context.Background(), l.BuildPlan(&config.Config{
+		Roots: map[string]string{
+			"rc":  rcRoot,
+			"zsh": zshRoot,
+		},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(zshRoot); !os.IsNotExist(err) {
+		t.Fatalf("dry-run must not create zsh root link, err=%v", err)
+	}
+}
+
+func TestBuildPlanDiscoversSourceAndTargetCompletionNames(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, "src", "launchcmd.sh")
+	writeFile(t, source, "x")
+	writeFile(t, filepath.Join(home, "src", "_launchcmd.sh"), "source completion")
+	writeFile(t, filepath.Join(home, "src", "_launchcmd"), "target completion")
+
+	l, _ := newTestLinker(t, home, false)
+	cfg := &config.Config{
+		Hostname: "ibra",
+		Roots:    map[string]string{"zsh": filepath.Join(home, ".config", "zsh")},
+		Bins: []config.ResolvedBin{{
+			Source:             source,
+			Target:             filepath.Join(home, ".local", "bin", "launchcmd"),
+			DiscoverCompletion: true,
+		}},
+	}
+	plans := l.BuildPlan(cfg)
+	byTarget := map[string]Plan{}
+	for _, plan := range plans {
+		byTarget[plan.Target] = plan
+	}
+
+	sourceCompletion := filepath.Join(home, ".config", "zsh", "functions", "hosts", "ibra", "_launchcmd.sh")
+	if plan, ok := byTarget[sourceCompletion]; !ok || plan.Source != filepath.Join(home, "src", "_launchcmd.sh") {
+		t.Fatalf("missing source-name completion plan: %+v", byTarget)
+	}
+	targetCompletion := filepath.Join(home, ".config", "zsh", "functions", "hosts", "ibra", "_launchcmd")
+	if plan, ok := byTarget[targetCompletion]; !ok || plan.Source != filepath.Join(home, "src", "_launchcmd") {
+		t.Fatalf("missing target-name completion plan: %+v", byTarget)
 	}
 }
 
