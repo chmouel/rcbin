@@ -44,6 +44,10 @@ The following host profile files are supported:
 | `shell/functions/*` | Links top-level files to `${zsh}/functions/hosts/${HOST}/<name>`. Later profiles override earlier profiles with the same basename. |
 | `bin/*` | Links top-level files to `${desktop_bin}/<name>`. Later profiles override earlier profiles with the same basename. |
 
+During `rc link`, `${desktop_bin}` is removed and recreated before binary links
+are applied, matching `rcold`. Any unmanaged files or directories in that
+location are deleted.
+
 The Go runtime also links `${rc}/systemd/*` into `${systemd_user}` when the
 systemd user directory exists, matching `rcold` link setup behavior.
 During `rc link`, `${zsh}` is linked to `${rc}/zsh` before host shell payloads
@@ -100,15 +104,6 @@ target already exists as a real non-symlink file. The Go linker treats those as
 operational errors unless the entry is optional.
 
 This is safer, but it is not byte-for-byte compatible with `rcold`.
-
-### Desktop binary cleanup
-
-`rcold` removes and recreates `${desktop_bin}` before linking host binaries,
-chmouzies, and repobins. The Go linker currently uses a managed-link manifest
-and does not blindly wipe unmanaged files.
-
-If exact `rcold` cleanup is required, implement it deliberately in the linker
-and document the data-loss implications.
 
 ## Defaults changed for compatibility
 

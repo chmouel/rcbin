@@ -220,7 +220,7 @@ func newLinkCmd(g *globals, deps Deps) *cobra.Command {
 			}
 
 			home := cfg.Roots["home"]
-			l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, g.dryRun)
+			l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, cfg.Roots["desktop_bin"], g.dryRun)
 			plans := l.BuildPlan(cfg)
 			return op(l.Apply(ctx, plans))
 		},
@@ -329,7 +329,7 @@ func newRunCmd(g *globals, deps Deps) *cobra.Command {
 			// Link and backup are independent; aggregate their errors.
 			var errs []error
 			home := cfg.Roots["home"]
-			l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, g.dryRun)
+			l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, cfg.Roots["desktop_bin"], g.dryRun)
 			if err := l.Apply(ctx, l.BuildPlan(cfg)); err != nil {
 				errs = append(errs, err)
 			}

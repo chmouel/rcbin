@@ -13,6 +13,7 @@ type FileSystem interface {
 	Readlink(name string) (string, error)
 	Symlink(oldname, newname string) error
 	Remove(name string) error
+	RemoveAll(path string) error
 	MkdirAll(path string, perm os.FileMode) error
 	EvalSymlinks(path string) (string, error)
 }
@@ -24,6 +25,7 @@ func (OSFS) Lstat(name string) (os.FileInfo, error)       { return os.Lstat(name
 func (OSFS) Readlink(name string) (string, error)         { return os.Readlink(name) }
 func (OSFS) Symlink(oldname, newname string) error        { return os.Symlink(oldname, newname) }
 func (OSFS) Remove(name string) error                     { return os.Remove(name) }
+func (OSFS) RemoveAll(path string) error                  { return os.RemoveAll(path) }
 func (OSFS) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
 func (OSFS) EvalSymlinks(path string) (string, error)     { return filepath.EvalSymlinks(path) }
 

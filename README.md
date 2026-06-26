@@ -170,6 +170,10 @@ first matching profile wins, matching the old script. For directories such as
 the same basename. During `rc link`, files under `${rc}/systemd` are also linked
 into `${systemd_user}` when that target directory exists.
 
+`rc link` recreates `${desktop_bin}` before linking binaries. Any unmanaged
+files or directories inside `${desktop_bin}` are deleted, so reserve that
+directory for rc-managed desktop scripts.
+
 Paths support a leading `~` and `${HOME}`, `${HOST}`, and `${GOPATH}` anywhere.
 An unset referenced variable is a validation error. Commands prefer
 `argv = [...]`; a task or hook may instead use `shell = "..."`. Exactly one form

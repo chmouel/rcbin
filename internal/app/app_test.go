@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,11 @@ import (
 func run(t *testing.T, fake *runner.Fake, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	home := t.TempDir()
+	return runWithHome(t, home, fake, args...)
+}
+
+func runWithHome(t *testing.T, home string, fake *runner.Fake, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 
@@ -31,6 +37,16 @@ func run(t *testing.T, fake *runner.Fake, args ...string) (stdout, stderr string
 		Stderr: &errBuf,
 	})
 	return out.String(), errBuf.String(), code
+}
+
+func writeAppFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestNoArgsPrintsHelp(t *testing.T) {
@@ -120,6 +136,55 @@ func TestSyncChangedOnlyDoesNotCloneOrSyncYadmByDefault(t *testing.T) {
 		if strings.HasPrefix(line, "yadm ") {
 			t.Fatalf("changed-only must not sync yadm by default, calls: %v", fake.CallLines())
 		}
+	}
+}
+
+func TestLinkRecreatesDesktopBin(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".local", "share", "rc", "zsh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(home, ".config", "yadm", "hosts", "testhost", "bin", "new-tool")
+	oldEntry := filepath.Join(home, ".local", "bin", "desktop", "old-tool")
+	newTarget := filepath.Join(home, ".local", "bin", "desktop", "new-tool")
+	writeAppFile(t, source, "new")
+	writeAppFile(t, oldEntry, "old")
+
+	stdout, stderr, code := runWithHome(t, home, nil, "link")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("link should keep stdout clean, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "linked 2 targets (links=1 bins=1 completions=0)") {
+		t.Fatalf("link stderr should report linked breakdown, got:\n%s", stderr)
+	}
+	if _, err := os.Lstat(oldEntry); !os.IsNotExist(err) {
+		t.Fatalf("old desktop entry should be removed, got err=%v", err)
+	}
+	if info, err := os.Lstat(newTarget); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("new desktop binary should be linked, info=%v err=%v", info, err)
+	}
+}
+
+func TestRunReportsLinkedBreakdown(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".local", "share", "rc", "zsh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(home, ".config", "yadm", "hosts", "testhost", "bin", "new-tool")
+	writeAppFile(t, source, "new")
+
+	stdout, stderr, code := runWithHome(t, home, nil, "run")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("run should keep stdout clean, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "linked 2 targets (links=1 bins=1 completions=0)") {
+		t.Fatalf("run stderr should report linked breakdown, got:\n%s", stderr)
 	}
 }
 

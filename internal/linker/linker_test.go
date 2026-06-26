@@ -24,7 +24,8 @@ func newBufferedTestLinker(t *testing.T, home string, dryRun, verbose bool) (*Li
 	fake := runner.NewFake()
 	var out, errBuf bytes.Buffer
 	rep := output.New(&out, &errBuf, false, verbose)
-	l := New(fake, rep, home, filepath.Join(home, ".config", "rc", "manifest.json"), dryRun)
+	desktopBin := filepath.Join(home, ".local", "bin", "desktop")
+	l := New(fake, rep, home, filepath.Join(home, ".config", "rc", "manifest.json"), desktopBin, dryRun)
 	return l, fake, &errBuf
 }
 
@@ -99,18 +100,26 @@ func TestVerboseRealApplyReportsActions(t *testing.T) {
 	}
 }
 
-func TestNonVerboseRealApplyStaysQuiet(t *testing.T) {
+func TestNonVerboseRealApplyReportsSummary(t *testing.T) {
 	home := t.TempDir()
-	src := filepath.Join(home, "src", "file")
-	writeFile(t, src, "x")
-	target := filepath.Join(home, ".config", "file")
+	linkSource := filepath.Join(home, "src", "file")
+	binSource := filepath.Join(home, "src", "tool")
+	completionSource := filepath.Join(home, "src", "_tool")
+	writeFile(t, linkSource, "x")
+	writeFile(t, binSource, "x")
+	writeFile(t, completionSource, "x")
+	linkTarget := filepath.Join(home, ".config", "file")
 
 	l, _, errBuf := newBufferedTestLinker(t, home, false, false)
-	if err := l.Apply(context.Background(), []Plan{{Source: src, Target: target, Kind: "link"}}); err != nil {
+	if err := l.Apply(context.Background(), []Plan{
+		{Source: linkSource, Target: linkTarget, Kind: "link"},
+		{Source: binSource, Target: filepath.Join(l.DesktopBin, "tool"), Kind: "bin"},
+		{Source: completionSource, Target: filepath.Join(home, ".config", "zsh", "functions", "hosts", "test", "_tool"), Kind: "completion"},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := errBuf.String(); got != "" {
-		t.Fatalf("non-verbose real apply should stay quiet, got:\n%s", got)
+	if got := errBuf.String(); !strings.Contains(got, "linked 3 targets (links=1 bins=1 completions=1)") {
+		t.Fatalf("non-verbose real apply should report link breakdown, got:\n%s", got)
 	}
 }
 
@@ -171,6 +180,115 @@ func TestUnmanagedFileUntouchedOnStaleSweep(t *testing.T) {
 	}
 	if _, err := os.Stat(target); err != nil {
 		t.Errorf("unmanaged real file must survive stale sweep: %v", err)
+	}
+}
+
+func TestDesktopBinCleanupRemovesUnmanagedEntriesAndUpdatesManifest(t *testing.T) {
+	home := t.TempDir()
+	l, _ := newTestLinker(t, home, false)
+	desktopBin := l.DesktopBin
+	staleFile := filepath.Join(desktopBin, "old-file")
+	staleNested := filepath.Join(desktopBin, "nested", "old-file")
+	oldSource := filepath.Join(home, "src", "old-tool")
+	oldTarget := filepath.Join(desktopBin, "old-tool")
+	newSource := filepath.Join(home, "src", "new-tool")
+	newTarget := filepath.Join(desktopBin, "new-tool")
+	writeFile(t, staleFile, "old")
+	writeFile(t, staleNested, "old")
+	writeFile(t, oldSource, "old")
+	writeFile(t, newSource, "new")
+	if err := os.Symlink(oldSource, oldTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&Manifest{Links: map[string]string{oldTarget: oldSource}}).Save(l.ManifestPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := l.Apply(context.Background(), []Plan{{Source: newSource, Target: newTarget, Kind: "bin"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, stale := range []string{staleFile, staleNested, oldTarget} {
+		if _, err := os.Lstat(stale); !os.IsNotExist(err) {
+			t.Fatalf("stale desktop entry %s should be removed, got err=%v", stale, err)
+		}
+	}
+	if info, err := os.Lstat(newTarget); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("new desktop binary should be linked, info=%v err=%v", info, err)
+	}
+	entries, err := os.ReadDir(desktopBin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "new-tool" {
+		t.Fatalf("desktop bin should contain only current links, got %v", entries)
+	}
+	manifest, err := LoadManifest(l.ManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := manifest.Links[oldTarget]; ok {
+		t.Fatalf("old desktop target should be removed from manifest: %v", manifest.Links)
+	}
+	if got := manifest.Links[newTarget]; got != newSource {
+		t.Fatalf("new desktop target manifest source = %q, want %q", got, newSource)
+	}
+}
+
+func TestDesktopBinCleanupDryRunDoesNotRemoveEntries(t *testing.T) {
+	home := t.TempDir()
+	l, _ := newTestLinker(t, home, true)
+	desktopBin := l.DesktopBin
+	staleFile := filepath.Join(desktopBin, "old-file")
+	source := filepath.Join(home, "src", "tool")
+	target := filepath.Join(desktopBin, "tool")
+	writeFile(t, staleFile, "old")
+	writeFile(t, source, "new")
+
+	if err := l.Apply(context.Background(), []Plan{{Source: source, Target: target, Kind: "bin"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(staleFile); err != nil {
+		t.Fatalf("dry-run should leave stale desktop entry in place: %v", err)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("dry-run must not create desktop link, got err=%v", err)
+	}
+	if _, err := os.Stat(l.ManifestPath); !os.IsNotExist(err) {
+		t.Fatalf("dry-run must not write manifest, got err=%v", err)
+	}
+}
+
+func TestDesktopBinCleanupRejectsHomePath(t *testing.T) {
+	home := t.TempDir()
+	victim := filepath.Join(home, "victim")
+	source := filepath.Join(home, "src", "tool")
+	writeFile(t, victim, "keep")
+	writeFile(t, source, "new")
+
+	l, _ := newTestLinker(t, home, false)
+	l.DesktopBin = home
+	err := l.Apply(context.Background(), []Plan{{Source: source, Target: filepath.Join(home, ".local", "bin", "desktop", "tool"), Kind: "bin"}})
+	if err == nil || !strings.Contains(err.Error(), "equals home") {
+		t.Fatalf("expected unsafe desktop_bin error, got %v", err)
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("unsafe cleanup must not remove home contents: %v", err)
+	}
+}
+
+func TestDesktopBinCleanupWaitsForValidPlan(t *testing.T) {
+	home := t.TempDir()
+	l, _ := newTestLinker(t, home, false)
+	staleFile := filepath.Join(l.DesktopBin, "old-file")
+	writeFile(t, staleFile, "old")
+
+	missingSource := filepath.Join(home, "missing")
+	err := l.Apply(context.Background(), []Plan{{Source: missingSource, Target: filepath.Join(l.DesktopBin, "tool"), Kind: "bin"}})
+	if err == nil || !strings.Contains(err.Error(), "source does not exist") {
+		t.Fatalf("expected missing source error, got %v", err)
+	}
+	if _, err := os.Stat(staleFile); err != nil {
+		t.Fatalf("desktop bin should not be cleaned before preflight passes: %v", err)
 	}
 }
 

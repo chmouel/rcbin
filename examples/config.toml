@@ -17,6 +17,7 @@ version = 1
 [roots]
 desktop_config = "~/.local/share/desktop-config"
 # Override the default ~/.local/bin/desktop if you keep desktop scripts elsewhere.
+# rc link recreates this directory and deletes unmanaged files inside it.
 # desktop_bin = "~/.local/bin/desktop"
 
 # Git provider shorthand and the repositories rc clones and synchronizes. A clone

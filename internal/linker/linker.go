@@ -1,6 +1,6 @@
-// Package linker resolves the complete desired set of symlinks, applies it
-// without ever overwriting real files, records managed links in a manifest, and
-// removes only stale managed links.
+// Package linker resolves the complete desired set of symlinks, recreates the
+// desktop binary directory, records managed links in a manifest, and removes
+// only stale managed links outside that directory.
 package linker
 
 import (
@@ -32,12 +32,21 @@ type Linker struct {
 	FS           FileSystem
 	Home         string
 	ManifestPath string
+	DesktopBin   string
 	DryRun       bool
 }
 
 // New returns a production linker.
-func New(r runner.Runner, rep *output.Reporter, home, manifestPath string, dryRun bool) *Linker {
-	return &Linker{R: r, Rep: rep, FS: OSFS{}, Home: home, ManifestPath: manifestPath, DryRun: dryRun}
+func New(r runner.Runner, rep *output.Reporter, home, manifestPath, desktopBin string, dryRun bool) *Linker {
+	return &Linker{
+		R:            r,
+		Rep:          rep,
+		FS:           OSFS{},
+		Home:         home,
+		ManifestPath: manifestPath,
+		DesktopBin:   desktopBin,
+		DryRun:       dryRun,
+	}
 }
 
 // BuildPlan computes the desired link set from the configuration, including
@@ -110,6 +119,9 @@ func (l *Linker) Apply(ctx context.Context, plans []Plan) error {
 	if err := detectConflicts(plans); err != nil {
 		return err
 	}
+	if err := l.validatePlans(plans); err != nil {
+		return err
+	}
 	plans = parentFirst(plans)
 
 	old, err := LoadManifest(l.ManifestPath)
@@ -118,12 +130,21 @@ func (l *Linker) Apply(ctx context.Context, plans []Plan) error {
 	}
 	l.Rep.Debugf("link plan: %d item(s) (%s); manifest has %d managed link(s)", len(plans), planKindSummary(plans), len(old.Links))
 	next := &Manifest{Links: map[string]string{}}
+	kindByTarget := map[string]string{}
+
+	if err := l.prepareDesktopBin(); err != nil {
+		return err
+	}
 
 	var errs []error
 	for _, p := range plans {
 		if err := l.linkOne(ctx, p, next); err != nil {
 			l.Rep.Errorf("%s: %v", p.Target, err)
 			errs = append(errs, fmt.Errorf("%s: %w", p.Target, err))
+			continue
+		}
+		if _, ok := next.Links[p.Target]; ok {
+			kindByTarget[p.Target] = planKind(p)
 		}
 	}
 	if len(errs) > 0 {
@@ -137,6 +158,7 @@ func (l *Linker) Apply(ctx context.Context, plans []Plan) error {
 			return fmt.Errorf("saving manifest: %w", err)
 		}
 	}
+	l.reportLinkSummary(linkSummaryFromTargets(kindByTarget))
 	return nil
 }
 
@@ -174,6 +196,122 @@ func detectConflicts(plans []Plan) error {
 		bySource[p.Target] = p.Source
 	}
 	return nil
+}
+
+func (l *Linker) validatePlans(plans []Plan) error {
+	var errs []error
+	for _, p := range plans {
+		if _, err := l.FS.Lstat(p.Source); err != nil {
+			if p.Optional {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("%s: source does not exist: %s", p.Target, p.Source))
+			continue
+		}
+		if !p.Privileged && !l.underHome(p.Target) {
+			errs = append(errs, fmt.Errorf("%s: target outside home requires privileged=true", p.Target))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (l *Linker) prepareDesktopBin() error {
+	desktopBin := filepath.Clean(l.DesktopBin)
+	if err := l.validateDesktopBin(desktopBin); err != nil {
+		return err
+	}
+	if l.DryRun {
+		l.Rep.Infof("[dry-run] would recreate desktop bin directory %s", desktopBin)
+		return nil
+	}
+	if err := l.FS.RemoveAll(desktopBin); err != nil {
+		return fmt.Errorf("cleaning desktop bin %s: %w", desktopBin, err)
+	}
+	if err := l.FS.MkdirAll(desktopBin, 0o755); err != nil {
+		return fmt.Errorf("creating desktop bin %s: %w", desktopBin, err)
+	}
+	l.Rep.Debugf("recreated desktop bin directory %s", desktopBin)
+	return nil
+}
+
+func (l *Linker) validateDesktopBin(desktopBin string) error {
+	if l.DesktopBin == "" || desktopBin == "." {
+		return fmt.Errorf("unsafe desktop_bin cleanup path: empty")
+	}
+	if !filepath.IsAbs(desktopBin) {
+		return fmt.Errorf("unsafe desktop_bin cleanup path %q: must be absolute", l.DesktopBin)
+	}
+	if filepath.Dir(desktopBin) == desktopBin {
+		return fmt.Errorf("unsafe desktop_bin cleanup path: %s", desktopBin)
+	}
+	if l.Home == "" {
+		return nil
+	}
+	home := filepath.Clean(l.Home)
+	if desktopBin == home {
+		return fmt.Errorf("unsafe desktop_bin cleanup path equals home: %s", desktopBin)
+	}
+	if !l.underHome(desktopBin) {
+		return fmt.Errorf("desktop_bin cleanup path outside home: %s", desktopBin)
+	}
+	return nil
+}
+
+type linkSummary struct {
+	Links       int
+	Bins        int
+	Completions int
+	Other       int
+}
+
+func linkSummaryFromTargets(kindByTarget map[string]string) linkSummary {
+	var summary linkSummary
+	for _, kind := range kindByTarget {
+		summary.add(kind)
+	}
+	return summary
+}
+
+func (s *linkSummary) add(kind string) {
+	switch kind {
+	case "link":
+		s.Links++
+	case "bin":
+		s.Bins++
+	case "completion":
+		s.Completions++
+	default:
+		s.Other++
+	}
+}
+
+func (s linkSummary) total() int {
+	return s.Links + s.Bins + s.Completions + s.Other
+}
+
+func (s linkSummary) detail() string {
+	parts := []string{
+		fmt.Sprintf("links=%d", s.Links),
+		fmt.Sprintf("bins=%d", s.Bins),
+		fmt.Sprintf("completions=%d", s.Completions),
+	}
+	if s.Other > 0 {
+		parts = append(parts, fmt.Sprintf("other=%d", s.Other))
+	}
+	return strings.Join(parts, " ")
+}
+
+func (l *Linker) reportLinkSummary(summary linkSummary) {
+	total := summary.total()
+	noun := "targets"
+	if total == 1 {
+		noun = "target"
+	}
+	if l.DryRun {
+		l.Rep.Infof("[dry-run] would link %d %s (%s)", total, noun, summary.detail())
+		return
+	}
+	l.Rep.Successf("linked %d %s (%s)", total, noun, summary.detail())
 }
 
 func planKindSummary(plans []Plan) string {
