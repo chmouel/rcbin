@@ -3,7 +3,7 @@ package doctor
 import (
 	"bytes"
 	"context"
-	"os"
+	"io"
 	"strings"
 	"testing"
 
@@ -26,7 +26,7 @@ func TestDoctorOfflineSkipsNetwork(t *testing.T) {
 	fake := runner.NewFake()
 	d := &Doctor{
 		R:       fake,
-		Rep:     output.New(os.Stdout, os.Stderr, false, false),
+		Rep:     output.New(io.Discard, io.Discard, false, false),
 		Cfg:     testCfg(t),
 		Offline: true,
 	}
@@ -53,7 +53,7 @@ func TestDoctorMissingGitFails(t *testing.T) {
 	fake.Missing["git"] = true
 	d := &Doctor{
 		R:       fake,
-		Rep:     output.New(os.Stdout, os.Stderr, false, false),
+		Rep:     output.New(io.Discard, io.Discard, false, false),
 		Cfg:     testCfg(t),
 		Offline: true,
 	}
@@ -73,7 +73,7 @@ func TestDoctorAlwaysReachesSummary(t *testing.T) {
 	fake.Missing["yadm"] = true
 	d := &Doctor{
 		R:       fake,
-		Rep:     output.New(os.Stdout, os.Stderr, false, false),
+		Rep:     output.New(io.Discard, io.Discard, false, false),
 		Cfg:     testCfg(t),
 		Offline: true,
 	}

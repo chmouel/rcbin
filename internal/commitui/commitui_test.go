@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -59,7 +58,7 @@ func newAdapter(t *testing.T, key byte) (*Adapter, *runner.Fake) {
 	t.Helper()
 	fake := runner.NewFake()
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
-	rep := output.New(os.Stdout, os.Stderr, false, false)
+	rep := output.New(io.Discard, io.Discard, false, false)
 	return &Adapter{R: fake, Rep: rep, Pr: fakePrompter{key: key}}, fake
 }
 
@@ -109,7 +108,7 @@ func TestMagitUsesTtyFrameAndRepoDir(t *testing.T) {
 	fake.AddStub("pgrep", runner.Result{Stdout: "123\n"}, nil) // emacs server present
 	a := &Adapter{
 		R:   fake,
-		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Rep: output.New(io.Discard, io.Discard, false, false),
 		Pr:  &seqPrompter{keys: []byte{'m', 'n'}}, // magit, then quit before pull/push
 	}
 	if _, err := a.Handle(context.Background(), config.RepoTarget{Path: "/repo"}, "repo"); !errors.Is(err, repo.ErrAbort) {
@@ -186,7 +185,7 @@ func TestAICommitSingleFileRunsConfiguredToolInteractively(t *testing.T) {
 
 	a := &Adapter{
 		R:     fake,
-		Rep:   output.New(os.Stdout, os.Stderr, false, false),
+		Rep:   output.New(io.Discard, io.Discard, false, false),
 		Tools: config.ToolsConfig{Aicommit: "aitool"},
 		Pr:    &seqPrompter{keys: []byte{'a', 'n'}},
 	}
@@ -221,7 +220,7 @@ func TestAICommitSelectorRunsSelectedFilesIndividually(t *testing.T) {
 
 	a := &Adapter{
 		R:        fake,
-		Rep:      output.New(os.Stdout, os.Stderr, false, false),
+		Rep:      output.New(io.Discard, io.Discard, false, false),
 		Pr:       &seqPrompter{keys: []byte{'a', 'n'}},
 		Selector: selector,
 	}
@@ -261,7 +260,7 @@ func TestAICommitSelectorCancelReturnsToMenu(t *testing.T) {
 
 	a := &Adapter{
 		R:        fake,
-		Rep:      output.New(os.Stdout, os.Stderr, false, false),
+		Rep:      output.New(io.Discard, io.Discard, false, false),
 		Pr:       &seqPrompter{keys: []byte{'a', 's'}},
 		Selector: selector,
 	}
@@ -376,7 +375,7 @@ func TestBackReturnsToMenu(t *testing.T) {
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
 	a := &Adapter{
 		R:   fake,
-		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Rep: output.New(io.Discard, io.Discard, false, false),
 		// lazygit, back to menu, skip out.
 		Pr: &seqPrompter{keys: []byte{'l', 'b', 's'}},
 	}
@@ -406,7 +405,7 @@ func TestContinueNoAborts(t *testing.T) {
 	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
 	a := &Adapter{
 		R:   fake,
-		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Rep: output.New(io.Discard, io.Discard, false, false),
 		Pr:  &seqPrompter{keys: []byte{'c', 'n'}}, // commit, then decline to continue
 	}
 	if _, err := a.Handle(context.Background(), config.RepoTarget{Path: "/repo"}, "repo"); !errors.Is(err, repo.ErrAbort) {
@@ -505,7 +504,7 @@ func TestPullFailureStopsBeforePush(t *testing.T) {
 
 	a := &Adapter{
 		R:   fake,
-		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Rep: output.New(io.Discard, io.Discard, false, false),
 		Pr:  fakePrompter{key: 'c'},
 	}
 	_, err := a.Handle(context.Background(), config.RepoTarget{Path: dir}, "repo")
@@ -535,7 +534,7 @@ func TestPullFailureToleratedWhenDirty(t *testing.T) {
 
 	a := &Adapter{
 		R:   fake,
-		Rep: output.New(os.Stdout, os.Stderr, false, false),
+		Rep: output.New(io.Discard, io.Discard, false, false),
 		Pr:  fakePrompter{key: 'c'},
 	}
 	if _, err := a.Handle(context.Background(), config.RepoTarget{Path: dir}, "repo"); err != nil {

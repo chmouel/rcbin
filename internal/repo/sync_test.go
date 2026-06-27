@@ -84,7 +84,7 @@ func makeRepoPair(t *testing.T) (work string) {
 
 func newTestSyncer(t *testing.T) *Syncer {
 	t.Helper()
-	rep := output.New(os.Stdout, os.Stderr, false, false)
+	rep := output.New(io.Discard, io.Discard, false, false)
 	return &Syncer{R: runner.New(), Rep: rep, Limit: 4}
 }
 
@@ -219,7 +219,7 @@ func TestHooksRunOnHeadChange(t *testing.T) {
 func TestShellHookUsesConfiguredShell(t *testing.T) {
 	ctx := context.Background()
 	fake := runner.NewFake()
-	rep := output.New(os.Stdout, os.Stderr, false, false)
+	rep := output.New(io.Discard, io.Discard, false, false)
 	s := &Syncer{R: fake, Rep: rep, Shell: "zsh"}
 	r := result{
 		repo: config.RepoTarget{

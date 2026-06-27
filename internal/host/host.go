@@ -3,30 +3,38 @@
 package host
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/chmouel/rc/internal/runner"
 )
 
 // Detect resolves the lowercase short hostname using, in order, the HOSTNAME
 // environment variable, the hostname command, and hostnamectl.
 func Detect() (string, error) {
+	return DetectWithRunner(context.Background(), runner.New())
+}
+
+// DetectWithRunner resolves the lowercase short hostname using r for external
+// probes.
+func DetectWithRunner(ctx context.Context, r runner.Runner) (string, error) {
 	if h := os.Getenv("HOSTNAME"); h != "" {
 		return normalize(h), nil
 	}
-	if p, err := exec.LookPath("hostname"); err == nil {
-		if out, err := exec.Command(p, "-s").Output(); err == nil {
-			if s := normalize(string(out)); s != "" {
+	if p, ok := r.LookPath("hostname"); ok {
+		if res, err := r.Run(ctx, runner.Spec{Name: p, Args: []string{"-s"}}); err == nil {
+			if s := normalize(res.Stdout); s != "" {
 				return s, nil
 			}
 		}
 	}
-	if p, err := exec.LookPath("hostnamectl"); err == nil {
-		if out, err := exec.Command(p, "hostname").Output(); err == nil {
-			if s := normalize(string(out)); s != "" {
+	if p, ok := r.LookPath("hostnamectl"); ok {
+		if res, err := r.Run(ctx, runner.Spec{Name: p, Args: []string{"hostname"}}); err == nil {
+			if s := normalize(res.Stdout); s != "" {
 				return s, nil
 			}
 		}

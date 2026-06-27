@@ -17,6 +17,7 @@ changes.
 - Dependencies are intentionally minimal:
   - `github.com/spf13/cobra` — CLI.
   - `github.com/pelletier/go-toml/v2` — TOML config.
+  - `golang.org/x/term` — terminal detection and raw-mode prompts.
 - Do not add dependencies without a concrete need. Prefer the standard library.
 
 ## Layout

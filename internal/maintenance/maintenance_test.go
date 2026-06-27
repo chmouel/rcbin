@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"github.com/chmouel/rc/internal/runner"
 )
 
-func rep() *output.Reporter { return output.New(os.Stdout, os.Stderr, false, false) }
+func rep() *output.Reporter { return output.New(io.Discard, io.Discard, false, false) }
 
 func TestPlatformSelection(t *testing.T) {
 	if platformMatches([]string{"linux"}, "darwin") {

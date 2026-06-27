@@ -277,6 +277,45 @@ func TestBinaryInstallFailsOnChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestDownloadArchiveFailsWhenResponseTooLarge(t *testing.T) {
+	oldLimit := archiveDownloadLimit
+	archiveDownloadLimit = 8
+	t.Cleanup(func() {
+		archiveDownloadLimit = oldLimit
+	})
+
+	home := t.TempDir()
+	installPath := filepath.Join(home, ".local", "bin", "rc")
+	writeSelfUpdateFile(t, installPath, "old")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("123456789"))
+	}))
+	defer server.Close()
+
+	u := &Updater{
+		Client:      server.Client(),
+		InstallPath: installPath,
+	}
+	path, sum, err := u.downloadArchive(context.Background(), releaseAsset{
+		Name:               "rc_0.0.1-next_darwin_arm64.tar.gz",
+		BrowserDownloadURL: server.URL,
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds 8 bytes") {
+		t.Fatalf("err = %v, want response size error", err)
+	}
+	if path != "" || sum != "" {
+		t.Fatalf("failed download returned path=%q sum=%q", path, sum)
+	}
+	matches, globErr := filepath.Glob(filepath.Join(filepath.Dir(installPath), ".rc-download-*"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("oversized download left temp files: %v", matches)
+	}
+}
+
 func rcArchive(t *testing.T, content string) []byte {
 	t.Helper()
 	var buf bytes.Buffer

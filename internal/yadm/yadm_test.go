@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -18,7 +17,7 @@ func (noopDirty) YadmDirty(context.Context, string) error { return nil }
 
 func newSyncer(t *testing.T, fake *runner.Fake, nonInteractive bool) *Syncer {
 	t.Helper()
-	rep := output.New(os.Stdout, os.Stderr, false, false)
+	rep := output.New(io.Discard, io.Discard, false, false)
 	return &Syncer{R: fake, Rep: rep, StateDir: t.TempDir(), NonInteractive: nonInteractive}
 }
 

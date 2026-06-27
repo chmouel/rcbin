@@ -1,10 +1,13 @@
 package host
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/chmouel/rc/internal/runner"
 )
 
 func TestNormalize(t *testing.T) {
@@ -17,6 +20,51 @@ func TestNormalize(t *testing.T) {
 		if got := normalize(in); got != want {
 			t.Errorf("normalize(%q)=%q want %q", in, got, want)
 		}
+	}
+}
+
+func TestDetectUsesHostnameEnvFirst(t *testing.T) {
+	t.Setenv("HOSTNAME", "Master.example.com\n")
+	fake := runner.NewFake()
+
+	got, err := DetectWithRunner(context.Background(), fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "master" {
+		t.Fatalf("DetectWithRunner = %q, want master", got)
+	}
+	if len(fake.CallLines()) != 0 {
+		t.Fatalf("HOSTNAME should avoid external probes, calls: %v", fake.CallLines())
+	}
+}
+
+func TestDetectUsesRunnerForExternalProbes(t *testing.T) {
+	t.Setenv("HOSTNAME", "")
+	fake := runner.NewFake()
+	fake.AddStub("/fake/hostname -s", runner.Result{Stdout: "Ibra.example.com\n"}, nil)
+
+	got, err := DetectWithRunner(context.Background(), fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "ibra" {
+		t.Fatalf("DetectWithRunner = %q, want ibra", got)
+	}
+}
+
+func TestDetectFallsBackToHostnamectl(t *testing.T) {
+	t.Setenv("HOSTNAME", "")
+	fake := runner.NewFake()
+	fake.AddStub("/fake/hostname -s", runner.Result{Stdout: "\n"}, nil)
+	fake.AddStub("/fake/hostnamectl hostname", runner.Result{Stdout: "Maximus.example.com\n"}, nil)
+
+	got, err := DetectWithRunner(context.Background(), fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "maximus" {
+		t.Fatalf("DetectWithRunner = %q, want maximus", got)
 	}
 }
 
