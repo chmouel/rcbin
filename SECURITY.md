@@ -1,32 +1,22 @@
-# Security Policy
+# Security policy
 
 ## Supported versions
 
-`rc` is distributed without long-term support branches: only the latest released
-version receives security fixes. Please upgrade to the most recent release before
-reporting an issue.
+`rc` has no long-term support branches. Security fixes go to the latest release.
+Upgrade before reporting an issue.
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities privately rather than opening a public
-issue:
+Report suspected vulnerabilities privately:
 
-- Preferred: open a [GitHub security advisory](https://github.com/chmouel/rcbin/security/advisories/new)
-  for this repository ("Report a vulnerability").
-- Alternatively, email <chmouel@chmouel.com>.
+- Open a [GitHub security advisory](https://github.com/chmouel/rcbin/security/advisories/new).
+- Or email <chmouel@chmouel.com>.
 
-Include enough detail to reproduce the issue: the affected command, your
-configuration (with secrets redacted), and the observed versus expected
-behavior. You will receive an acknowledgement, and a fix or mitigation will be
-coordinated before any public disclosure.
+Include the affected command, redacted configuration, and observed versus
+expected behavior. I will coordinate a fix or mitigation before public
+disclosure.
 
-## Scope and notes
+## Scope
 
-`rc` orchestrates local tools on your workstation. By design it:
-
-- runs external commands (`git`, `yadm`, lazygit, editors, backup/update tasks)
-  defined in your configuration, and
-- reads and writes files at user-specified paths.
-
-Configuration is therefore trusted input. Only run `rc` with configuration and
-host profile files you control.
+`rc` runs local tools and reads or writes user-specified paths. Configuration and
+host profiles are trusted input. Only run `rc` with files you control.

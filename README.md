@@ -1,28 +1,24 @@
 # rc
 
-A workstation orchestrator. `rc` keeps a personal machine in sync: it
-synchronizes [YADM](https://yadm.io) and Git repositories, manages dotfile
-symlinks and binaries, runs backups and OS/tool updates, reports a Waybar
-status, and runs diagnostics.
+`rc` keeps my workstations in sync. It syncs YADM and Git repositories, manages
+dotfile and binary links, runs backups and update tasks, prints Waybar status,
+and checks the local environment.
 
-It is tailored to my host setup. It started as a large hand-written Bash script
-and has been rewritten in Go.
-
-Conventions for contributors and agents are in [`AGENTS.md`](./AGENTS.md).
+The tool is tailored to my host setup. It started as a Bash script and now lives
+as a Go command.
 
 ## Install
 
-With the nightly binary installer:
+Nightly binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/chmouel/rcbin/main/install.sh | sh
 ```
 
-Or build from source:
+From source:
 
 ```bash
 go build -o rc ./cmd/rc
-# move rc onto your PATH, e.g.
 install -m 0755 rc ~/.local/bin/rc
 ```
 
@@ -43,8 +39,8 @@ rc config validate
 rc completion [bash|zsh|fish|powershell]
 ```
 
-Running `rc` with no arguments executes the default `rc run` workflow. Use
-`rc help` or `rc --help` to show help without making changes.
+Running `rc` without arguments runs the default `rc run` workflow. Use `rc help`
+or `rc --help` to print help without making changes.
 
 ### Global options
 
@@ -57,33 +53,19 @@ Running `rc` with no arguments executes the default `rc run` workflow. Use
 --dry-run            show actions without performing them
 ```
 
-- All mutating commands honor `--dry-run`.
-- For a dirty repository the prompt reads a single keypress (no Enter needed):
-  `m` Magit, `l` lazygit (default), `d` toggle compact/paged delta-highlighted
-  diff, `s` skip, `a` aicommit, `c` direct commit, `q` quit. When multiple
-  files changed, `a` opens a file selector: arrows or `j`/`k` move, Space
-  toggles files, `a` toggles all, Enter commits selected files, and `q` cancels
-  back to the menu. After an action rc asks
-  `Would you like to continue? ([Y]es/[n]o/[b]ack)`
-  before pulling and pushing; `b` returns to the menu, and `n`, `q`, or `Ctrl+C`
-  aborts the run cleanly.
-- In `--non-interactive` mode, dirty or conflicted repositories become
-  actionable errors while clean repositories continue.
-- Machine output (such as `status --format waybar`) is written to stdout; logs
-  and diagnostics go to stderr.
-- Output uses colored section rules, highlighted menu hotkeys, and
-  [Nerd Font](https://www.nerdfonts.com/) glyphs for status icons, so a patched
-  font is recommended. Color is enabled only when stderr is a terminal; it is
-  disabled automatically when output is piped/redirected, when `NO_COLOR` is
-  set, or with `--no-color`.
-- Exit codes: `0` success, `1` operational/validation failure, `2` invalid CLI
-  usage.
+- Mutating commands honor `--dry-run`.
+- Machine output, such as `status --format waybar`, goes to stdout. Logs and
+  diagnostics go to stderr.
+- Color is enabled only when stderr is a terminal. It is disabled by `--no-color`,
+  `NO_COLOR`, or redirected output.
+- Exit codes: `0` success, `1` operational or validation failure, `2` invalid
+  CLI usage.
 
 ### Common workflows
 
 ```bash
-rc                           # same as rc run: sync, then link, then backup
-rc help                      # show help
+rc                           # sync, link, then backup
+rc help                      # print help
 rc sync --changed-only       # only touch repositories with local changes
 rc status --format waybar    # JSON for a Waybar custom module
 rc update                    # run system/tool update tasks
@@ -91,68 +73,64 @@ rc self-update               # update ~/.local/bin/rc and zsh completion
 rc doctor                    # check the environment
 ```
 
-### Self update
+When a repository is dirty, the interactive menu accepts one key: `m` Magit, `l`
+lazygit, `d` diff, `s` skip, `a` aicommit, `c` direct commit, and `q` quit. In
+`--non-interactive` mode, dirty or conflicted repositories become errors while
+clean repositories continue.
 
-`rc self-update` updates the installed binary at `~/.local/bin/rc`.
+### Self-update and completion
 
-- If it is a symlink to a `github.com/chmouel/rcbin` checkout's `bin/rc`, rc
-  refuses to continue when the checkout has local changes, then runs
-  `git pull --ff-only` and `make build`.
-- If it is a regular binary, rc downloads the matching archive from the
-  `nightly` prerelease, verifies it with `checksums.txt`, extracts `rc`, and
-  atomically replaces the installed binary.
+`rc self-update` updates `~/.local/bin/rc`.
 
-After a successful update, rc regenerates Zsh completion by running the updated
-binary and writing `${zsh}/functions/hosts/${HOST}/_rc` (by default,
-`~/.config/zsh/functions/hosts/<host>/_rc`).
+- If the binary is a symlink to a `github.com/chmouel/rcbin` checkout, rc refuses
+  a dirty checkout, then runs `git pull --ff-only` and `make build`.
+- If it is a regular binary, rc downloads the `nightly` archive, verifies
+  `checksums.txt`, and replaces the binary atomically.
 
-### Shell completion
+After a successful update, rc regenerates Zsh completion at
+`${zsh}/functions/hosts/${HOST}/_rc`, usually
+`~/.config/zsh/functions/hosts/<host>/_rc`.
 
-`rc` ships shell completion via Cobra. Load it for your shell, for example:
+For shell completion in the current session:
 
 ```bash
-# bash (current session)
 source <(rc completion bash)
-# zsh (current session)
 source <(rc completion zsh)
-# fish
 rc completion fish | source
 ```
 
-Run `rc completion <shell> --help` for instructions on installing it
-permanently.
+Run `rc completion <shell> --help` for install instructions.
 
 ## Configuration
 
-Configuration is layered. Global configuration is TOML, while host/profile
-configuration uses the line-based host files under the YADM host root. Layers
-merge in this order:
+Configuration has two parts:
 
-1. Built-in defaults (encoded in the binary).
-2. Global file: `~/.config/rc/config.toml` (honors `XDG_CONFIG_HOME`).
+- global TOML at `~/.config/rc/config.toml`, honoring `XDG_CONFIG_HOME`;
+- line-based host profiles under `~/.config/yadm/hosts/<profile>`.
+
+Layers merge in this order:
+
+1. Built-in defaults.
+2. Global TOML.
 3. `common` host profile.
-4. Lexically sorted multi-host profiles (directories named like `hostA,hostB`).
-5. The exact-host profile.
+4. Lexically sorted multi-host profiles, for example `hostA,hostB`.
+5. Exact-host profile.
 
-Host profiles live under `~/.config/yadm/hosts/<profile>` by default.
-Scalars use the last specified value. Domain lists are keyed — links by target,
-binaries by target, repositories by path, tasks by name — so later layers
-override earlier ones deterministically, giving the exact host top priority.
-See [`MIGRATION.md`](./MIGRATION.md) for the precise compatibility notes and
-known differences from `rcold`.
+Scalars use the last value. Lists are keyed by domain: links by target, binaries
+by target, repositories by path, tasks by name.
 
-The built-in defaults are deliberately neutral: they provide generic roots,
-sync/tool/doctor settings, and OS/tool update tasks, but **no** Git provider,
-repositories, YADM backup remote, or backup tasks. Put those in your global
-file. A complete, ready-to-adapt template lives in
-[`examples/config.toml`](./examples/config.toml):
+The built-in defaults include generic roots and built-in update tasks, but no Git
+provider, repositories, YADM backup remote, or backup tasks. Start from the
+example:
 
 ```bash
 cp examples/config.toml ~/.config/rc/config.toml
-# then edit the provider, repositories, yadm remote, roots, and backups
+rc config validate
 ```
 
-A minimal host profile can use these host files:
+### Host profiles
+
+A small host profile can use these files:
 
 ```text
 # ~/.config/yadm/hosts/common/rc
@@ -180,7 +158,14 @@ perso/lazyworktree post_update={ make build }
 perso/x always={ echo hi | cat }
 ```
 
-Host profiles may also carry payload files that are linked directly:
+`extra-dirs` lines start with a repository path. Relative paths resolve under
+`${repo_base}` unless they expand to absolute paths. Add hooks after the path:
+`post_update={ command }` runs after a successful sync that changes `HEAD`;
+`always={ command }` runs after every attempted sync. Simple commands such as
+`make build` run as argv commands. Pipes, redirects, variables, globs, and other
+shell syntax run through the configured shell.
+
+Host profiles can also carry files that rc links directly:
 
 | Host path | Linked target |
 | --- | --- |
@@ -190,67 +175,24 @@ Host profiles may also carry payload files that are linked directly:
 | `shell/functions/*` | `${zsh}/functions/hosts/${HOST}/<name>` |
 | `bin/*` | `${desktop_bin}/<name>` |
 
-For singleton files (`emacs/init.el`, `shell/init.zsh`, `shell/post.zsh`), the
-first matching profile wins, matching the old script. For directories such as
-`shell/functions` and `bin`, later matching profiles override earlier files with
-the same basename. During `rc link`, files under `${rc}/systemd` are also linked
-into `${systemd_user}` when that target directory exists.
+For `emacs/init.el`, `shell/init.zsh`, and `shell/post.zsh`, the first matching
+profile wins. For `shell/functions/*` and `bin/*`, later matching profiles
+override files with the same basename.
 
-`rc link` recreates `${desktop_bin}` before linking binaries. Any unmanaged
-files or directories inside `${desktop_bin}` are deleted, so reserve that
-directory for rc-managed desktop scripts.
+`rc link` recreates `${desktop_bin}` before linking binaries and deletes
+unmanaged files there. Keep that directory for rc-managed desktop scripts.
 
-Paths support a leading `~` and `${HOME}`, `${HOST}`, and `${GOPATH}` anywhere.
-An unset referenced variable is a validation error. Commands prefer
-`argv = [...]`; a task or hook may instead use `shell = "..."`. Exactly one form
-is allowed.
+Paths support a leading `~` plus `${HOME}`, `${HOST}`, and `${GOPATH}`. Unset
+variables fail validation. Commands use either `argv = [...]` or `shell = "..."`,
+never both.
 
-Validate a merged configuration with:
-
-```bash
-rc config validate
-```
+See [`MIGRATION.md`](./MIGRATION.md) for `rcold` compatibility notes.
 
 ## Development
 
-```bash
-make build       # build ./bin/rc
-make test        # go test ./...
-make race        # go test -race ./...
-make lint        # gofmt check + go vet + golangci-lint
-make check       # lint + test
-make cross       # cross-compile linux/darwin (amd64/arm64)
-make help        # list all targets
-```
-
-Or use the Go toolchain directly:
-
-```bash
-go build ./...
-go test ./...
-go test -race ./...
-go vet ./...
-gofmt -l .
-golangci-lint run
-```
-
-Optional git hooks are managed with [pre-commit](https://pre-commit.com):
-
-```bash
-pre-commit install                 # run fast checks on commit
-pre-commit install --hook-type pre-push   # run the test suite on push
-pre-commit run --all-files
-```
-
-Releases are produced by [GoReleaser](https://goreleaser.com) on tag push
-(`vX.Y.Z`) via GitHub Actions. Validate the config and dry-run locally with:
-
-```bash
-goreleaser check
-goreleaser release --snapshot --clean
-```
-
-See [`AGENTS.md`](./AGENTS.md) for architecture and conventions.
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for build, test, lint, pull request,
+and release workflow. See [`AGENTS.md`](./AGENTS.md) for architecture and agent
+rules.
 
 ## License
 
