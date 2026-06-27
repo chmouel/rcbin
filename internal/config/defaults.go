@@ -81,6 +81,12 @@ func defaultUpdates() []UpdateTask {
 			Commands: []Command{{Argv: []string{"hm-update"}}},
 		},
 		{
+			Name:            "self-update",
+			Requires:        []string{"rc"},
+			Commands:        []Command{{Argv: []string{"rc", "self-update"}}},
+			ContinueOnError: true,
+		},
+		{
 			Name:      "apt",
 			Platforms: []string{"linux"},
 			Requires:  []string{"apt-get"},
