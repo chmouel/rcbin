@@ -389,6 +389,30 @@ func newConfigCmd(g *globals, deps Deps) *cobra.Command {
 		Use:   "config",
 		Short: "Inspect configuration",
 	}
+	var dumpFormat string
+	dump := &cobra.Command{
+		Use:   "dump",
+		Short: "Print the merged resolved configuration",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !config.ValidDumpFormat(dumpFormat) {
+				return fmt.Errorf("invalid --format %q: want toml or json", dumpFormat)
+			}
+			rep := newReporter(g, deps)
+			cfg, err := loadConfig(g)
+			if err != nil {
+				return op(err)
+			}
+			payload, err := config.Dump(cfg, dumpFormat)
+			if err != nil {
+				return op(err)
+			}
+			_, err = rep.Out().Write(payload)
+			return op(err)
+		},
+	}
+	dump.Flags().StringVar(&dumpFormat, "format", config.DumpFormatTOML, "output format: toml or json")
+
 	validate := &cobra.Command{
 		Use:   "validate",
 		Short: "Load and validate the merged configuration",
@@ -405,7 +429,7 @@ func newConfigCmd(g *globals, deps Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(validate)
+	cmd.AddCommand(dump, validate)
 	return cmd
 }
 

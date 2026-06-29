@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,6 +119,76 @@ func TestConfigValidateSucceeds(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "configuration valid") {
 		t.Errorf("stderr missing validation message:\n%s", errOut)
+	}
+}
+
+func TestConfigDumpTOMLSucceeds(t *testing.T) {
+	out, errOut, code := run(t, nil, "config", "dump")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, errOut)
+	}
+	if errOut != "" {
+		t.Fatalf("stderr = %q, want empty", errOut)
+	}
+	for _, want := range []string{
+		"hostname = 'testhost'",
+		"[roots]",
+		"home = '",
+		"manifest_path = '",
+		"[[updates]]",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestConfigDumpJSONSucceeds(t *testing.T) {
+	out, errOut, code := run(t, nil, "config", "dump", "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%s)", code, errOut)
+	}
+	if errOut != "" {
+		t.Fatalf("stderr = %q, want empty", errOut)
+	}
+
+	var payload struct {
+		Hostname string            `json:"hostname"`
+		Roots    map[string]string `json:"roots"`
+		Sync     struct {
+			Concurrency int `json:"concurrency"`
+		} `json:"sync"`
+		Updates []struct {
+			Name string `json:"name"`
+		} `json:"updates"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("invalid json dump: %v\n%s", err, out)
+	}
+	if payload.Hostname != "testhost" {
+		t.Errorf("hostname = %q, want testhost", payload.Hostname)
+	}
+	if payload.Roots["home"] == "" {
+		t.Errorf("home root missing from dump")
+	}
+	if payload.Sync.Concurrency != 4 {
+		t.Errorf("concurrency = %d, want 4", payload.Sync.Concurrency)
+	}
+	if len(payload.Updates) == 0 {
+		t.Errorf("expected default updates in dump")
+	}
+}
+
+func TestConfigDumpInvalidFormatIsUsageError(t *testing.T) {
+	out, errOut, code := run(t, nil, "config", "dump", "--format", "yaml")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if out != "" {
+		t.Fatalf("stdout = %q, want empty", out)
+	}
+	if !strings.Contains(errOut, "invalid --format") {
+		t.Errorf("stderr missing invalid format error:\n%s", errOut)
 	}
 }
 

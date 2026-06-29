@@ -35,6 +35,7 @@ rc update [TASK...]
 rc self-update
 rc doctor [--offline]
 rc run
+rc config dump [--format toml|json]
 rc config validate
 rc completion [bash|zsh|fish|powershell]
 ```
@@ -126,7 +127,12 @@ example:
 ```bash
 cp examples/config.toml ~/.config/rc/config.toml
 rc config validate
+rc config dump
+rc config dump --format json
 ```
+
+`rc config dump` prints the fully merged, expanded, resolved runtime
+configuration to stdout. It honors `--config` and `--host`.
 
 ### Host profiles
 
