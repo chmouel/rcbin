@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/chmouel/rc/internal/config"
 	"github.com/chmouel/rc/internal/output"
@@ -202,23 +204,33 @@ func (s *Syncer) runHooks(ctx context.Context, r result) {
 		return
 	}
 	if r.err == nil && r.headChanged && r.repo.Hooks.PostUpdate != nil {
-		s.runHook(ctx, r.repo.Path, "post_update", r.repo.Hooks.PostUpdate)
+		s.runHook(ctx, r.repo.Path, r.name, "post_update", r.repo.Hooks.PostUpdate)
 	}
 	if r.repo.Hooks.Always != nil {
-		s.runHook(ctx, r.repo.Path, "always", r.repo.Hooks.Always)
+		s.runHook(ctx, r.repo.Path, r.name, "always", r.repo.Hooks.Always)
 	}
 }
 
-func (s *Syncer) runHook(ctx context.Context, dir, name string, c *config.Command) {
+func (s *Syncer) runHook(ctx context.Context, dir, repoName, hookName string, c *config.Command) {
+	name := strings.ReplaceAll(hookName, "_", "-")
+	spec := commandSpec(*c, dir, s.shell())
+
+	s.Rep.Infof("Running %s hook for %s", name, s.Rep.Accent(repoName))
+	s.Rep.Printf("  %s %s\n", s.Rep.Arrow(), s.Rep.Bold(formatCommand(spec)))
 	if s.DryRun {
-		s.Rep.Infof("[dry-run] would run %s hook in %s", name, dir)
+		s.Rep.Skipf("[dry-run] command not executed")
 		return
 	}
-	s.Rep.Debugf("running %s hook in %s", name, dir)
-	spec := commandSpec(*c, dir, s.shell())
+
+	progress := s.Rep.Progress("Executing "+name+" hook", 1)
 	if _, err := s.R.Run(ctx, spec); err != nil {
-		s.Rep.Warnf("%s hook failed in %s: %v", name, dir, err)
+		progress.Stop()
+		s.Rep.Warnf("%s hook failed for %s: %v", name, repoName, err)
+		return
 	}
+	progress.Advance(repoName)
+	progress.Stop()
+	s.Rep.Successf("%s hook completed for %s", name, repoName)
 }
 
 func (s *Syncer) shell() string {
@@ -234,6 +246,24 @@ func commandSpec(c config.Command, dir, shell string) runner.Spec {
 		return runner.Spec{Name: shell, Args: []string{"-c", c.Shell}, Dir: dir}
 	}
 	return runner.Spec{Name: c.Argv[0], Args: c.Argv[1:], Dir: dir}
+}
+
+func formatCommand(spec runner.Spec) string {
+	parts := make([]string, 0, len(spec.Args)+1)
+	parts = append(parts, quoteCommandArg(spec.Name))
+	for _, arg := range spec.Args {
+		parts = append(parts, quoteCommandArg(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func quoteCommandArg(arg string) string {
+	if arg != "" && strings.IndexFunc(arg, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("_@%+=:,./-", r)
+	}) == -1 {
+		return arg
+	}
+	return "'" + strings.ReplaceAll(arg, "'", "'\"'\"'") + "'"
 }
 
 func canonical(path string) string {

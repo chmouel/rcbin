@@ -169,7 +169,8 @@ perso/x always={ echo hi | cat }
 `post_update={ command }` runs after a successful sync that changes `HEAD`;
 `always={ command }` runs after every attempted sync. Simple commands such as
 `make build` run as argv commands. Pipes, redirects, variables, globs, and other
-shell syntax run through the configured shell.
+shell syntax run through the configured shell. When a hook runs, rc shows the
+repository, command, and execution progress on stderr.
 
 Host profiles can also carry files that rc links directly:
 

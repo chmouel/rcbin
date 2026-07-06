@@ -216,6 +216,58 @@ func TestHooksRunOnHeadChange(t *testing.T) {
 	}
 }
 
+func TestHookShowsCommandAndProgress(t *testing.T) {
+	ctx := context.Background()
+	fake := runner.NewFake()
+	var errBuf bytes.Buffer
+	rep := output.New(io.Discard, &errBuf, true, false)
+	s := &Syncer{R: fake, Rep: rep, Shell: "zsh"}
+
+	s.runHook(ctx, "/repo", "lazyworktree", "post_update", &config.Command{
+		Shell: "make build && echo done",
+	})
+
+	got := errBuf.String()
+	for _, want := range []string{
+		"Running post-update hook",
+		"lazyworktree",
+		"zsh -c 'make build && echo done'",
+		"Executing post-update hook",
+		"1/1",
+		"post-update hook completed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("hook output missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestHookShowsCommandWithoutColor(t *testing.T) {
+	ctx := context.Background()
+	fake := runner.NewFake()
+	var errBuf bytes.Buffer
+	rep := output.New(io.Discard, &errBuf, false, false)
+	s := &Syncer{R: fake, Rep: rep}
+
+	s.runHook(ctx, "/repo", "repo", "post_update", &config.Command{
+		Argv: []string{"make", "build target"},
+	})
+
+	got := errBuf.String()
+	for _, want := range []string{
+		"Running post-update hook for repo",
+		"make 'build target'",
+		"post-update hook completed for repo",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("plain hook output missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "\033[") {
+		t.Errorf("plain hook output contains ANSI escapes: %q", got)
+	}
+}
+
 func TestShellHookUsesConfiguredShell(t *testing.T) {
 	ctx := context.Background()
 	fake := runner.NewFake()
