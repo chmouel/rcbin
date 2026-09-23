@@ -166,8 +166,21 @@ func (s *Syncer) syncClean(ctx context.Context, t config.RepoTarget, name string
 		r.headChanged = Head(ctx, s.R, t.Path) != before
 		return r
 	}
+	afterPull := Head(ctx, s.R, t.Path)
+	pulled := 0
+	if afterPull != before {
+		count, err := CommitCount(ctx, s.R, t.Path, before, afterPull)
+		if err != nil {
+			r.err = fmt.Errorf("count pulled commits: %w", err)
+			r.headChanged = true
+			return r
+		}
+		pulled = count
+	}
 
+	pushed := 0
 	if ahead, ok := Upstream(ctx, s.R, t.Path); ok && ahead > 0 {
+		pushed = ahead
 		if _, err := git(ctx, s.R, t.Path, "push"); err != nil {
 			r.err = fmt.Errorf("push failed: %w", err)
 			r.headChanged = Head(ctx, s.R, t.Path) != before
@@ -177,7 +190,7 @@ func (s *Syncer) syncClean(ctx context.Context, t config.RepoTarget, name string
 
 	after := Head(ctx, s.R, t.Path)
 	r.headChanged = before != after
-	r.lines = append(r.lines, s.Rep.SuccessLine("%s has been synchronized", name))
+	r.lines = append(r.lines, s.Rep.SuccessLine("%s", SyncSummary(name, pulled, pushed)))
 	return r
 }
 

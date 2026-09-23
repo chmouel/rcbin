@@ -1,6 +1,7 @@
 package commitui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -491,6 +492,24 @@ func TestDirectCommitInvokesCommitAndPush(t *testing.T) {
 	}
 	if !sawPush {
 		t.Error("expected a push after commit")
+	}
+}
+
+func TestHandleReportsSyncCommitCounts(t *testing.T) {
+	fake := runner.NewFake()
+	fake.AddStub("git -C", runner.Result{Stdout: "abc123\n"}, nil)
+	var errBuf bytes.Buffer
+	a := &Adapter{
+		R:   fake,
+		Rep: output.New(io.Discard, &errBuf, false, false),
+		Pr:  fakePrompter{key: 'c'},
+	}
+
+	if _, err := a.Handle(context.Background(), config.RepoTarget{Path: "/repo"}, "repo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := errBuf.String(); !strings.Contains(got, "repo synchronized (pulled 0 commits, pushed 0 commits)") {
+		t.Errorf("sync output = %q, want zero commit count summary", got)
 	}
 }
 

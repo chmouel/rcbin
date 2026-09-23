@@ -103,6 +103,9 @@ func TestCleanRepoUpToDate(t *testing.T) {
 	if res.headChanged {
 		t.Error("HEAD should not change for up-to-date repo")
 	}
+	if got := strings.Join(res.lines, "\n"); !strings.Contains(got, "pulled 0 commits, pushed 0 commits") {
+		t.Errorf("sync summary = %q, want zero commit counts", got)
+	}
 }
 
 func TestCleanRepoAheadPushes(t *testing.T) {
@@ -127,6 +130,32 @@ func TestCleanRepoAheadPushes(t *testing.T) {
 	ahead, _ = Upstream(ctx, r, work)
 	if ahead != 0 {
 		t.Errorf("expected 0 ahead after push, got %d", ahead)
+	}
+	if got := strings.Join(res.lines, "\n"); !strings.Contains(got, "pulled 0 commits, pushed 1 commit") {
+		t.Errorf("sync summary = %q, want pushed commit count", got)
+	}
+}
+
+func TestCleanRepoReportsPulledCommits(t *testing.T) {
+	work := makeRepoPair(t)
+	root := filepath.Dir(work)
+	other := filepath.Join(root, "other")
+	mustGit(t, root, "clone", filepath.Join(root, "remote.git"), other)
+	mustGit(t, other, "config", "user.name", "t")
+	mustGit(t, other, "config", "user.email", "t@e")
+	if err := os.WriteFile(filepath.Join(other, "incoming"), []byte("remote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, other, "add", "incoming")
+	mustGit(t, other, "commit", "-m", "remote change")
+	mustGit(t, other, "push")
+
+	res := newTestSyncer(t).syncClean(context.Background(), config.RepoTarget{Path: work}, "work")
+	if res.err != nil {
+		t.Fatalf("pull sync failed: %v", res.err)
+	}
+	if got := strings.Join(res.lines, "\n"); !strings.Contains(got, "pulled 1 commit, pushed 0 commits") {
+		t.Errorf("sync summary = %q, want pulled commit count", got)
 	}
 }
 

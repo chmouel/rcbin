@@ -113,17 +113,31 @@ menu:
 	// mirroring the legacy `git pull -q || true`. A pull failure on a clean tree
 	// is a genuine error and is reported.
 	changed := func() bool { return repo.Head(ctx, a.R, dir) != before }
+	beforePull := repo.Head(ctx, a.R, dir)
+	pulled := 0
 
 	if _, err := a.R.Run(ctx, runner.Spec{Name: "git", Args: []string{"-C", dir, "pull", "--quiet"}, Dir: dir}); err != nil {
 		if !repo.HasChanges(ctx, a.R, dir) {
 			return changed(), fmt.Errorf("pull failed: %w", err)
 		}
 		a.Rep.Warnf("%s: uncommitted changes remain, skipping pull", name)
+	} else if afterPull := repo.Head(ctx, a.R, dir); afterPull != beforePull {
+		var err error
+		pulled, err = repo.CommitCount(ctx, a.R, dir, beforePull, afterPull)
+		if err != nil {
+			return changed(), fmt.Errorf("count pulled commits: %w", err)
+		}
+	}
+
+	pushed := 0
+	if ahead, ok := repo.Upstream(ctx, a.R, dir); ok && ahead > 0 {
+		pushed = ahead
 	}
 	if _, err := a.R.Run(ctx, runner.Spec{Name: "git", Args: []string{"-C", dir, "push"}, Dir: dir}); err != nil {
 		return changed(), fmt.Errorf("push failed: %w", err)
 	}
 
+	a.Rep.Successf("%s", repo.SyncSummary(name, pulled, pushed))
 	return changed(), nil
 }
 

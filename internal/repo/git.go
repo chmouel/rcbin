@@ -5,6 +5,7 @@ package repo
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -56,6 +57,38 @@ func Upstream(ctx context.Context, r runner.Runner, dir string) (ahead int, hasU
 		return 0, true
 	}
 	return n, true
+}
+
+// CommitCount reports the commits reachable from to but not from from.
+func CommitCount(ctx context.Context, r runner.Runner, dir, from, to string) (int, error) {
+	out, err := git(ctx, r, dir, "rev-list", "--count", from+".."+to)
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return 0, fmt.Errorf("parse commit count %q: %w", out, err)
+	}
+	return n, nil
+}
+
+// SyncSummary formats the human-facing result of a repository synchronization.
+func SyncSummary(name string, pulled, pushed int) string {
+	return fmt.Sprintf(
+		"%s synchronized (pulled %d %s, pushed %d %s)",
+		name,
+		pulled,
+		commitNoun(pulled),
+		pushed,
+		commitNoun(pushed),
+	)
+}
+
+func commitNoun(count int) string {
+	if count == 1 {
+		return "commit"
+	}
+	return "commits"
 }
 
 // RemoteURL returns the origin remote URL, if any.
