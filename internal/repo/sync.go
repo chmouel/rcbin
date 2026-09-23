@@ -190,7 +190,7 @@ func (s *Syncer) syncClean(ctx context.Context, t config.RepoTarget, name string
 
 	after := Head(ctx, s.R, t.Path)
 	r.headChanged = before != after
-	r.lines = append(r.lines, s.Rep.SuccessLine("%s", SyncSummary(name, pulled, pushed)))
+	r.lines = append(r.lines, s.Rep.SuccessLine("%s", SyncSummary(s.Rep, name, pulled, pushed)))
 	return r
 }
 

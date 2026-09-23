@@ -88,6 +88,24 @@ func newTestSyncer(t *testing.T) *Syncer {
 	return &Syncer{R: runner.New(), Rep: rep, Limit: 4}
 }
 
+func TestSyncSummaryHighlightsNonzeroCounts(t *testing.T) {
+	rep := output.New(io.Discard, io.Discard, true, false)
+	got := SyncSummary(rep, "work", 2, 1)
+	for _, want := range []string{
+		"pulled \033[1m\033[35m2 commits\033[0m",
+		"pushed \033[1m\033[35m1 commit\033[0m",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary %q missing highlighted count %q", got, want)
+		}
+	}
+
+	zero := SyncSummary(rep, "work", 0, 0)
+	if strings.Contains(zero, "\033[") {
+		t.Errorf("zero-count summary should not color counts, got %q", zero)
+	}
+}
+
 func TestCleanRepoUpToDate(t *testing.T) {
 	work := makeRepoPair(t)
 	ctx := context.Background()

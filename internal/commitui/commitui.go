@@ -137,7 +137,7 @@ menu:
 		return changed(), fmt.Errorf("push failed: %w", err)
 	}
 
-	a.Rep.Successf("%s", repo.SyncSummary(name, pulled, pushed))
+	a.Rep.Successf("%s", repo.SyncSummary(a.Rep, name, pulled, pushed))
 	return changed(), nil
 }
 

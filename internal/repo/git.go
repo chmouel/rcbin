@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chmouel/rc/internal/output"
 	"github.com/chmouel/rc/internal/runner"
 )
 
@@ -73,14 +74,20 @@ func CommitCount(ctx context.Context, r runner.Runner, dir, from, to string) (in
 }
 
 // SyncSummary formats the human-facing result of a repository synchronization.
-func SyncSummary(name string, pulled, pushed int) string {
+func SyncSummary(rep *output.Reporter, name string, pulled, pushed int) string {
+	pulledCount := fmt.Sprintf("%d %s", pulled, commitNoun(pulled))
+	if pulled > 0 {
+		pulledCount = rep.Key(pulledCount)
+	}
+	pushedCount := fmt.Sprintf("%d %s", pushed, commitNoun(pushed))
+	if pushed > 0 {
+		pushedCount = rep.Key(pushedCount)
+	}
 	return fmt.Sprintf(
-		"%s synchronized (pulled %d %s, pushed %d %s)",
+		"%s synchronized (pulled %s, pushed %s)",
 		name,
-		pulled,
-		commitNoun(pulled),
-		pushed,
-		commitNoun(pushed),
+		pulledCount,
+		pushedCount,
 	)
 }
 
