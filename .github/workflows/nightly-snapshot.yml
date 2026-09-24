@@ -44,7 +44,7 @@ jobs:
 
           git tag -d nightly >/dev/null 2>&1 || true
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: steps.changes.outputs.changed == 'true'
         with:
           go-version-file: go.mod
