@@ -559,6 +559,25 @@ func TestDefaultsResolve(t *testing.T) {
 	if got, want := strings.Join(brew.Commands[1].Argv, " "), "brew upgrade -y"; got != want {
 		t.Errorf("brew upgrade command = %q, want %q", got, want)
 	}
+	var piExtensions *ResolvedUpdate
+	for i := range cfg.Updates {
+		if cfg.Updates[i].Name == "pi-extensions" {
+			piExtensions = &cfg.Updates[i]
+			break
+		}
+	}
+	if piExtensions == nil {
+		t.Fatal("expected default pi extensions update task")
+	}
+	if got, want := strings.Join(piExtensions.Requires, " "), "pi"; got != want {
+		t.Errorf("pi extensions requirements = %q, want %q", got, want)
+	}
+	if len(piExtensions.Commands) != 1 {
+		t.Fatalf("expected one pi extensions update command, got %v", piExtensions.Commands)
+	}
+	if got, want := strings.Join(piExtensions.Commands[0].Argv, " "), "pi update --extensions"; got != want {
+		t.Errorf("pi extensions update command = %q, want %q", got, want)
+	}
 	// Defaults must stay neutral: no personal provider, backup remote, repos, or
 	// backup tasks are baked into the binary.
 	if cfg.Provider != "" {

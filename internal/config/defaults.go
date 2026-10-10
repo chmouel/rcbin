@@ -102,5 +102,10 @@ func defaultUpdates() []UpdateTask {
 			Commands:        []Command{{Argv: []string{"gh", "extension", "upgrade", "--all"}}},
 			ContinueOnError: true,
 		},
+		{
+			Name:     "pi-extensions",
+			Requires: []string{"pi"},
+			Commands: []Command{{Argv: []string{"pi", "update", "--extensions"}}},
+		},
 	}
 }
