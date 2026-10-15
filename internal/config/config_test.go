@@ -578,6 +578,25 @@ func TestDefaultsResolve(t *testing.T) {
 	if got, want := strings.Join(piExtensions.Commands[0].Argv, " "), "pi update --extensions"; got != want {
 		t.Errorf("pi extensions update command = %q, want %q", got, want)
 	}
+	var herdrPlugins *ResolvedUpdate
+	for i := range cfg.Updates {
+		if cfg.Updates[i].Name == "herdr-plugins" {
+			herdrPlugins = &cfg.Updates[i]
+			break
+		}
+	}
+	if herdrPlugins == nil {
+		t.Fatal("expected default herdr plugins update task")
+	}
+	if got, want := strings.Join(herdrPlugins.Requires, " "), "herdr"; got != want {
+		t.Errorf("herdr plugins requirements = %q, want %q", got, want)
+	}
+	if len(herdrPlugins.Commands) != 1 {
+		t.Fatalf("expected one herdr plugins update command, got %v", herdrPlugins.Commands)
+	}
+	if got, want := strings.Join(herdrPlugins.Commands[0].Argv, " "), "herdr plugin update --yes"; got != want {
+		t.Errorf("herdr plugins update command = %q, want %q", got, want)
+	}
 	// Defaults must stay neutral: no personal provider, backup remote, repos, or
 	// backup tasks are baked into the binary.
 	if cfg.Provider != "" {

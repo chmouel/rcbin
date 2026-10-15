@@ -106,3 +106,10 @@ signoff = true
 #   { argv = ["brew", "cleanup", "--prune=3"] },
 # ]
 # continue_on_error = true
+#
+# The built-in herdr plugin task is equivalent to:
+#
+# [[updates]]
+# name = "herdr-plugins"
+# requires = ["herdr"]
+# commands = [{ argv = ["herdr", "plugin", "update", "--yes"] }]

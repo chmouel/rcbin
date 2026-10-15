@@ -107,5 +107,10 @@ func defaultUpdates() []UpdateTask {
 			Requires: []string{"pi"},
 			Commands: []Command{{Argv: []string{"pi", "update", "--extensions"}}},
 		},
+		{
+			Name:     "herdr-plugins",
+			Requires: []string{"herdr"},
+			Commands: []Command{{Argv: []string{"herdr", "plugin", "update", "--yes"}}},
+		},
 	}
 }
