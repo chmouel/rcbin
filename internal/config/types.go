@@ -130,6 +130,15 @@ type DoctorConfig struct {
 	TimeoutSeconds int        `toml:"timeout_seconds"`
 }
 
+// PiSettings configures synchronization of the Pi agent configuration tree.
+// Optional booleans use pointers so an explicit false can override defaults.
+type PiSettings struct {
+	Enabled  *bool  `toml:"enabled"`
+	AgentDir string `toml:"agent_dir"`
+	Source   string `toml:"source"`
+	SyncAuth *bool  `toml:"sync_auth"`
+}
+
 // File is the in-memory representation of any configuration layer. Global TOML
 // files populate roots and engine sections; host profiles populate links,
 // bins, and repositories. Unset sections are ignored during merge.
@@ -143,6 +152,7 @@ type File struct {
 	Sync   SyncConfig   `toml:"sync"`
 	Tools  ToolsLayer   `toml:"tools"`
 	Doctor DoctorConfig `toml:"doctor"`
+	Pi     PiSettings   `toml:"pi"`
 
 	Links        []Link       `toml:"links"`
 	Bins         []Bin        `toml:"bins"`

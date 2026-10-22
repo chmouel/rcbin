@@ -37,6 +37,7 @@ func newRootCmd(deps Deps) *cobra.Command {
 	pf.BoolVar(&g.noColor, "no-color", false, "disable colored output")
 	pf.BoolVar(&g.nonInteractive, "non-interactive", false, "never launch interactive tools")
 	pf.BoolVar(&g.dryRun, "dry-run", false, "show actions without performing them")
+	pf.BoolVar(&g.adoptPi, "adopt-pi", false, "back up local Pi entries that conflict with the canonical source")
 
 	root.AddCommand(
 		newStatusCmd(g, deps),

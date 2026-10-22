@@ -31,6 +31,7 @@ type globals struct {
 	noColor        bool
 	nonInteractive bool
 	dryRun         bool
+	adoptPi        bool
 }
 
 // operationalError marks a failure that is operational or validation related

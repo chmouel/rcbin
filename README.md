@@ -1,8 +1,9 @@
 # rc
 
 `rc` keeps my workstations in sync. It syncs YADM and Git repositories, manages
-dotfile and binary links, runs backups and update tasks, prints Waybar status,
-and checks the local environment.
+dotfile and binary links, keeps the Pi coding agent configuration in place, runs
+backups and update tasks, prints Waybar status, and checks the local
+environment.
 
 The tool is tailored to my host setup. It started as a Bash script and now lives
 as a Go command.
@@ -43,6 +44,10 @@ rc completion [bash|zsh|fish|powershell]
 Running `rc` without arguments runs the default `rc run` workflow. Use `rc help`
 or `rc --help` to print help without making changes.
 
+`rc sync` clones missing repositories, then pulls the rest and YADM. A failed
+clone or pull is an operational failure: the command exits non-zero, and `rc run`
+stops before linking, backups, and the Pi agent configuration.
+
 ### Global options
 
 ```text
@@ -52,6 +57,7 @@ or `rc --help` to print help without making changes.
 --no-color           disable colored output
 --non-interactive    never launch lazygit, Emacs, or aicommit
 --dry-run            show actions without performing them
+--adopt-pi           back up local Pi entries that conflict with the canonical source
 ```
 
 - Mutating commands honor `--dry-run`.
@@ -192,6 +198,55 @@ unmanaged files there. Keep that directory for rc-managed desktop scripts.
 Paths support a leading `~` plus `${HOME}`, `${HOST}`, and `${GOPATH}`. Unset
 variables fail validation. Commands use either `argv = [...]` or `shell = "..."`,
 never both.
+
+## Pi agent configuration
+
+`rc sync` also places the Pi coding agent configuration. One canonical copy lives
+in the `desktop-config` repository, and every machine symlinks it into place:
+
+```text
+~/.local/share/desktop-config/pi/agent   canonical copy (Git)
+~/.pi/agent                              agent directory (symlinks)
+```
+
+The synced entries are `settings.json`, `models.json`, `keybindings.json`,
+`mcp.json`, `AGENTS.md`, and the `extensions/`, `skills/`, `prompts/`, and
+`themes/` directories. Machine-local state such as `sessions/`, `npm/`,
+`models-store.json`, `run-history.jsonl`, `trust.json`, and `missions/` stays out
+of Git, and `rc` never rewrites `settings.json`.
+
+The first run seeds whatever already exists in `~/.pi/agent` into the canonical
+copy, then replaces it with an absolute symlink. When both sides exist and differ,
+rc stops and reports the conflict; `rc sync --adopt-pi` moves the local entry to
+`<name>.rc-adopt.bak` (then `.1`, `.2`, and so on) and links the canonical one.
+Local files are never deleted.
+
+A shared entry can be replaced per host by a file or directory at
+`<source>/hosts/<HOST>/<entry>`. The override replaces the shared entry entirely;
+there is no merge. For example `hosts/maximus/models.json` is linked instead of
+`models.json` on host `maximus`.
+
+`auth.json` holds plaintext OAuth credentials, so it is only synced with
+`[pi] sync_auth = true`. Keep the canonical repository private, and expect to run
+`pi auth login` again after a token rotation instead of restoring a backup.
+Whenever the credential file is in play, whether in the shared tree or a host
+override, rc restricts it to `0600` and fails the Pi phase if it cannot.
+
+Moves during seeding and adoption never overwrite existing files: they use the
+platform's atomic no-replace rename, so a concurrent writer always wins and keeps
+its data.
+
+`rc sync` places the Pi configuration only after the repositories and YADM
+synchronized cleanly, since the canonical copy comes out of `desktop-config`. A
+failed Pi phase does not stop `rc run` from linking and backing up.
+
+`rc` only places files. Pi installs its own packages, both when a session starts
+and through `pi update --extensions`, which `rc sync` runs once the linking
+succeeds. On a fresh machine `rc sync` therefore places the configuration but the
+pinned npm packages appear after the next `pi` session.
+
+Set `[pi] enabled = false` to opt out, and use `[pi] agent_dir` or `[pi] source`
+to override the two paths.
 
 See [`MIGRATION.md`](./MIGRATION.md) for `rcold` compatibility notes.
 

@@ -22,6 +22,7 @@ type dumpConfig struct {
 	Sync         dumpSync          `toml:"sync" json:"sync"`
 	Tools        dumpTools         `toml:"tools" json:"tools"`
 	Doctor       dumpDoctor        `toml:"doctor" json:"doctor"`
+	Pi           dumpPi            `toml:"pi" json:"pi"`
 	Links        []dumpLink        `toml:"links" json:"links"`
 	Bins         []dumpBin         `toml:"bins" json:"bins"`
 	Repositories []dumpRepository  `toml:"repositories" json:"repositories"`
@@ -49,6 +50,13 @@ type dumpTools struct {
 type dumpDoctor struct {
 	Endpoints      []Endpoint `toml:"endpoints" json:"endpoints"`
 	TimeoutSeconds int        `toml:"timeout_seconds" json:"timeout_seconds"`
+}
+
+type dumpPi struct {
+	Enabled  bool   `toml:"enabled" json:"enabled"`
+	AgentDir string `toml:"agent_dir" json:"agent_dir"`
+	Source   string `toml:"source" json:"source"`
+	SyncAuth bool   `toml:"sync_auth" json:"sync_auth"`
 }
 
 type dumpLink struct {
@@ -131,14 +139,20 @@ func ValidDumpFormat(format string) bool {
 
 func newDumpConfig(cfg *Config) dumpConfig {
 	return dumpConfig{
-		Hostname:     cfg.Hostname,
-		Vars:         cloneStringMap(cfg.Vars),
-		Roots:        cloneStringMap(cfg.Roots),
-		Provider:     cfg.Provider,
-		Yadm:         dumpYadm{Remote: cfg.Yadm.Remote, Track: cloneStrings(cfg.Yadm.Track)},
-		Sync:         dumpSync{Concurrency: cfg.Concurrency},
-		Tools:        dumpTools{Lazygit: cfg.Tools.Lazygit, Aicommit: cfg.Tools.Aicommit, Shell: cfg.Tools.Shell, PreferEmacs: cfg.Tools.PreferEmacs},
-		Doctor:       dumpDoctor{Endpoints: cloneEndpoints(cfg.Doctor.Endpoints), TimeoutSeconds: cfg.Doctor.TimeoutSeconds},
+		Hostname: cfg.Hostname,
+		Vars:     cloneStringMap(cfg.Vars),
+		Roots:    cloneStringMap(cfg.Roots),
+		Provider: cfg.Provider,
+		Yadm:     dumpYadm{Remote: cfg.Yadm.Remote, Track: cloneStrings(cfg.Yadm.Track)},
+		Sync:     dumpSync{Concurrency: cfg.Concurrency},
+		Tools:    dumpTools{Lazygit: cfg.Tools.Lazygit, Aicommit: cfg.Tools.Aicommit, Shell: cfg.Tools.Shell, PreferEmacs: cfg.Tools.PreferEmacs},
+		Doctor:   dumpDoctor{Endpoints: cloneEndpoints(cfg.Doctor.Endpoints), TimeoutSeconds: cfg.Doctor.TimeoutSeconds},
+		Pi: dumpPi{
+			Enabled:  cfg.Pi.Enabled,
+			AgentDir: cfg.Pi.AgentDir,
+			Source:   cfg.Pi.Source,
+			SyncAuth: cfg.Pi.SyncAuth,
+		},
 		Links:        dumpLinks(cfg.Links),
 		Bins:         dumpBins(cfg.Bins),
 		Repositories: dumpRepositories(cfg.Repos),

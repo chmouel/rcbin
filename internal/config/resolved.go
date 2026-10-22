@@ -45,6 +45,17 @@ type ResolvedUpdate struct {
 	ContinueOnError bool
 }
 
+// PiConfig is the resolved Pi agent configuration sync settings.
+type PiConfig struct {
+	Enabled  bool
+	AgentDir string
+	Source   string
+	// SourceExplicit records that the user set [pi].source, which allows
+	// creating it even when roots.desktop_config does not exist.
+	SourceExplicit bool
+	SyncAuth       bool
+}
+
 // Config is the fully merged, expanded, and validated configuration consumed by
 // every subsystem and by doctor.
 type Config struct {
@@ -57,6 +68,7 @@ type Config struct {
 	Concurrency int
 	Tools       ToolsConfig
 	Doctor      DoctorConfig
+	Pi          PiConfig
 
 	Links []ResolvedLink
 	Bins  []ResolvedBin

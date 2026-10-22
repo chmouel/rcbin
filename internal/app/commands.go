@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/chmouel/rc/internal/linker"
 	"github.com/chmouel/rc/internal/maintenance"
 	"github.com/chmouel/rc/internal/output"
+	"github.com/chmouel/rc/internal/pi"
 	"github.com/chmouel/rc/internal/repo"
 	"github.com/chmouel/rc/internal/selfupdate"
 	"github.com/chmouel/rc/internal/yadm"
@@ -98,7 +100,7 @@ func newSyncCmd(g *globals, deps Deps) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Synchronize Git repositories and YADM",
+		Short: "Synchronize Git repositories, YADM, and the Pi agent configuration",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if skipYadm && yadmOnly {
@@ -123,6 +125,15 @@ func newSyncCmd(g *globals, deps Deps) *cobra.Command {
 			effectiveSkipYadm := skipYadm || (changedOnly && !yadmOnly)
 			if !effectiveSkipYadm {
 				if err := syncYadm(ctx, g, deps, rep, cfg); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			// Pi links the canonical tree out of desktop-config, so it only runs
+			// once the repositories and YADM are known to be current.
+			if !yadmOnly {
+				if len(errs) > 0 {
+					rep.Warnf("synchronization failed; skipping the Pi agent configuration")
+				} else if err := syncPi(ctx, g, deps, rep, cfg); err != nil {
 					errs = append(errs, err)
 				}
 			}
@@ -164,8 +175,12 @@ func syncRepos(ctx context.Context, g *globals, deps Deps, rep *output.Reporter,
 		}
 	}
 
+	var errs []error
 	if err := repo.EnsureClones(ctx, deps.Runner, cfg.Provider, repos, g.dryRun); err != nil {
+		// Keep the failure in the aggregate: callers gate the Pi phase on a clean
+		// synchronization, and a missing clone must not look like success.
 		rep.Warnf("clone step reported issues: %v", err)
+		errs = append(errs, err)
 	}
 
 	syncer := &repo.Syncer{
@@ -176,7 +191,10 @@ func syncRepos(ctx context.Context, g *globals, deps Deps, rep *output.Reporter,
 		DryRun: g.dryRun,
 		Shell:  cfg.Shell(),
 	}
-	return syncer.Sync(ctx, repos)
+	if err := syncer.Sync(ctx, repos); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // handlerOrNil converts a possibly-nil *Adapter into a repo.DirtyHandler that is
@@ -203,6 +221,48 @@ func syncYadm(ctx context.Context, g *globals, deps Deps, rep *output.Reporter, 
 		DryRun:         g.dryRun,
 	}
 	return syncer.Sync(ctx)
+}
+
+// syncPi links the canonical Pi agent configuration into the local agent
+// directory. Pi owns package installation, so this only places files and then
+// asks Pi to refresh its extensions.
+func syncPi(ctx context.Context, g *globals, deps Deps, rep *output.Reporter, cfg *config.Config) error {
+	if !cfg.Pi.Enabled {
+		rep.Debugf("pi: synchronization disabled in configuration")
+		return nil
+	}
+	if cfg.Pi.AgentDir == "" || cfg.Pi.Source == "" {
+		rep.Debugf("pi: no agent directory or canonical source resolved")
+		return nil
+	}
+	s := &pi.Syncer{
+		R:           deps.Runner,
+		Rep:         rep,
+		AgentDir:    cfg.Pi.AgentDir,
+		Source:      cfg.Pi.Source,
+		Host:        cfg.Hostname,
+		DryRun:      g.dryRun,
+		Adopt:       g.adoptPi,
+		SyncAuth:    cfg.Pi.SyncAuth,
+		AllowCreate: piCreationAllowed(cfg),
+	}
+	return op(s.Sync(ctx))
+}
+
+// piCreationAllowed reports whether rc may create the canonical Pi source
+// directory. It only does so when the user pointed `pi.source` at a path or
+// when the desktop-config checkout already exists, so a machine without that
+// repository is never given a stray Pi tree.
+func piCreationAllowed(cfg *config.Config) bool {
+	if cfg.Pi.SourceExplicit {
+		return true
+	}
+	root := cfg.Roots["desktop_config"]
+	if root == "" {
+		return false
+	}
+	info, err := os.Stat(root)
+	return err == nil && info.IsDir()
 }
 
 func newLinkCmd(g *globals, deps Deps) *cobra.Command {
@@ -370,8 +430,13 @@ func runWorkflow(cmd *cobra.Command, g *globals, deps Deps) error {
 		return op(errors.Join(syncErrs...))
 	}
 
-	// Link and backup are independent; aggregate their errors.
+	// Link and backup are independent; aggregate their errors. Pi placement is
+	// only attempted after a clean sync phase, but a Pi failure must not stop
+	// link or backup.
 	var errs []error
+	if err := syncPi(ctx, g, deps, rep, cfg); err != nil {
+		errs = append(errs, err)
+	}
 	home := cfg.Roots["home"]
 	l := linker.New(deps.Runner, rep, home, cfg.ManifestPath, cfg.Roots["desktop_bin"], g.dryRun)
 	if err := l.Apply(ctx, l.BuildPlan(cfg)); err != nil {

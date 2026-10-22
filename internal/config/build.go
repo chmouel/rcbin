@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -109,6 +110,8 @@ func Build(layers []File, vars Vars, hostname string) (*Config, error) {
 	backups := newOrdered[ResolvedBackup]()
 	updates := newOrdered[ResolvedUpdate]()
 
+	var piAgentDir, piSource string
+
 	var errs []error
 	add := func(e error) {
 		if e != nil {
@@ -156,6 +159,19 @@ func Build(layers []File, vars Vars, hostname string) (*Config, error) {
 		}
 		if f.Doctor.TimeoutSeconds != 0 {
 			cfg.Doctor.TimeoutSeconds = f.Doctor.TimeoutSeconds
+		}
+		if f.Pi.Enabled != nil {
+			cfg.Pi.Enabled = *f.Pi.Enabled
+		}
+		if f.Pi.SyncAuth != nil {
+			cfg.Pi.SyncAuth = *f.Pi.SyncAuth
+		}
+		if f.Pi.AgentDir != "" {
+			piAgentDir = f.Pi.AgentDir
+		}
+		if f.Pi.Source != "" {
+			piSource = f.Pi.Source
+			cfg.Pi.SourceExplicit = true
 		}
 
 		// Default repositories key by resolved path.
@@ -223,6 +239,14 @@ func Build(layers []File, vars Vars, hostname string) (*Config, error) {
 	cfg.Repos = repos.values()
 	cfg.Backups = backups.values()
 	cfg.Updates = updates.values()
+
+	agentDir, err := resolvePiAgentDir(piAgentDir, vars, home)
+	add(err)
+	source, err := resolvePiSource(piSource, cfg.Pi.SourceExplicit, roots, vars)
+	add(err)
+	add(validatePiPaths(agentDir, source))
+	cfg.Pi.AgentDir = agentDir
+	cfg.Pi.Source = source
 
 	if cfg.ManifestPath == "" {
 		base := roots["config"]
@@ -410,4 +434,70 @@ func containsSlash(s string) bool {
 		}
 	}
 	return false
+}
+
+func resolvePiAgentDir(explicit string, vars Vars, home string) (string, error) {
+	if explicit != "" {
+		ex, err := expand(explicit, vars)
+		if err != nil {
+			return "", fmt.Errorf("pi.agent_dir: %w", err)
+		}
+		if !filepath.IsAbs(ex) {
+			return "", fmt.Errorf("pi.agent_dir %q must be an absolute path", explicit)
+		}
+		return filepath.Clean(ex), nil
+	}
+	if env := os.Getenv("PI_CODING_AGENT_DIR"); env != "" {
+		if !filepath.IsAbs(env) {
+			return "", fmt.Errorf("PI_CODING_AGENT_DIR %q must be an absolute path", env)
+		}
+		return filepath.Clean(env), nil
+	}
+	if home == "" {
+		return "", nil
+	}
+	return filepath.Join(home, ".pi", "agent"), nil
+}
+
+func resolvePiSource(explicit string, sourceExplicit bool, roots map[string]string, vars Vars) (string, error) {
+	if sourceExplicit {
+		ex, err := expand(explicit, vars)
+		if err != nil {
+			return "", fmt.Errorf("pi.source: %w", err)
+		}
+		if !filepath.IsAbs(ex) {
+			return "", fmt.Errorf("pi.source %q must be an absolute path", explicit)
+		}
+		return filepath.Clean(ex), nil
+	}
+	root := roots["desktop_config"]
+	if root == "" {
+		return "", nil
+	}
+	return filepath.Join(root, "pi", "agent"), nil
+}
+
+// validatePiPaths rejects lexically equal or nested trees. The Pi syncer
+// repeats the check on canonicalised paths, where symlink aliases are visible.
+func validatePiPaths(agentDir, source string) error {
+	if agentDir == "" || source == "" {
+		return nil
+	}
+	switch {
+	case agentDir == source:
+		return fmt.Errorf("pi.agent_dir and pi.source resolve to the same path %q", agentDir)
+	case pathWithin(source, agentDir):
+		return fmt.Errorf("pi.source %q is inside pi.agent_dir %q", source, agentDir)
+	case pathWithin(agentDir, source):
+		return fmt.Errorf("pi.agent_dir %q is inside pi.source %q", agentDir, source)
+	}
+	return nil
+}
+
+func pathWithin(child, parent string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

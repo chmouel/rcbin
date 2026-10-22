@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -632,5 +633,196 @@ func TestBackupOutputExpandsHost(t *testing.T) {
 	}
 	if got := cfg.Backups[0].Output; got != "/home/u/cfg/dconf/dconf.reg-ibra" {
 		t.Errorf("backup output not expanded under repo root: %q", got)
+	}
+}
+
+func TestPiDefaultsAndDesktopConfigSource(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	layer := File{Roots: map[string]string{"desktop_config": "~/git/desktop-config"}}
+	cfg, err := Build([]File{Defaults(), layer}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Pi.Enabled {
+		t.Error("pi.enabled should default to true")
+	}
+	if cfg.Pi.SyncAuth {
+		t.Error("pi.sync_auth should default to false")
+	}
+	if cfg.Pi.SourceExplicit {
+		t.Error("derived source must not be marked explicit")
+	}
+	if got, want := cfg.Pi.AgentDir, "/home/u/.pi/agent"; got != want {
+		t.Errorf("agent_dir=%q want %q", got, want)
+	}
+	if got, want := cfg.Pi.Source, "/home/u/git/desktop-config/pi/agent"; got != want {
+		t.Errorf("source=%q want %q", got, want)
+	}
+}
+
+func TestPiWithoutDesktopConfigRootHasNoSource(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	cfg, err := Build([]File{Defaults()}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Pi.Source != "" {
+		t.Errorf("source=%q want empty", cfg.Pi.Source)
+	}
+	if got, want := cfg.Pi.AgentDir, "/home/u/.pi/agent"; got != want {
+		t.Errorf("agent_dir=%q want %q", got, want)
+	}
+}
+
+func TestPiExplicitSourceAndAgentDir(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "/ignored/agent")
+	layer := File{Pi: PiSettings{
+		AgentDir: "${HOME}/.config/pi-agent",
+		Source:   "${HOME}/src/pi",
+		Enabled:  boolPtr(false),
+		SyncAuth: boolPtr(true),
+	}}
+	cfg, err := Build([]File{Defaults(), layer}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Pi.AgentDir, "/home/u/.config/pi-agent"; got != want {
+		t.Errorf("agent_dir=%q want %q", got, want)
+	}
+	if got, want := cfg.Pi.Source, "/home/u/src/pi"; got != want {
+		t.Errorf("source=%q want %q", got, want)
+	}
+	if !cfg.Pi.SourceExplicit {
+		t.Error("explicit source must set SourceExplicit")
+	}
+	if cfg.Pi.Enabled {
+		t.Error("explicit enabled=false must win over the default")
+	}
+	if !cfg.Pi.SyncAuth {
+		t.Error("explicit sync_auth=true must win over the default")
+	}
+}
+
+func TestPiAgentDirFromEnvironment(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "/srv/pi/agent")
+	cfg, err := Build([]File{Defaults()}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Pi.AgentDir, "/srv/pi/agent"; got != want {
+		t.Errorf("agent_dir=%q want %q", got, want)
+	}
+}
+
+func TestPiLayerLastWins(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	common := File{Pi: PiSettings{Enabled: boolPtr(false), Source: "/srv/pi/one"}}
+	host := File{Pi: PiSettings{Enabled: boolPtr(true), SyncAuth: boolPtr(true)}}
+	cfg, err := Build([]File{Defaults(), common, host}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Pi.Enabled {
+		t.Error("later layer enabled=true must win")
+	}
+	if !cfg.Pi.SyncAuth {
+		t.Error("later layer sync_auth=true must win")
+	}
+	if got, want := cfg.Pi.Source, "/srv/pi/one"; got != want {
+		t.Errorf("source=%q want %q", got, want)
+	}
+}
+
+func TestPiValidationErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		pi   PiSettings
+		want string
+	}{
+		{
+			name: "expansion error",
+			pi:   PiSettings{Source: "${NOPE}/pi"},
+			want: "unsupported variable(s) NOPE",
+		},
+		{
+			name: "relative source",
+			pi:   PiSettings{Source: "pi/agent"},
+			want: "must be an absolute path",
+		},
+		{
+			name: "relative agent dir",
+			pi:   PiSettings{AgentDir: "agent"},
+			want: "must be an absolute path",
+		},
+		{
+			name: "same path",
+			pi:   PiSettings{AgentDir: "/srv/pi", Source: "/srv/pi"},
+			want: "same path",
+		},
+		{
+			name: "source inside agent dir",
+			pi:   PiSettings{AgentDir: "/srv/pi", Source: "/srv/pi/agent"},
+			want: "is inside pi.agent_dir",
+		},
+		{
+			name: "agent dir inside source",
+			pi:   PiSettings{AgentDir: "/srv/pi/agent", Source: "/srv/pi"},
+			want: "is inside pi.source",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("PI_CODING_AGENT_DIR", "")
+			_, err := Build([]File{Defaults(), {Pi: c.pi}}, testVars(), "ibra")
+			if err == nil {
+				t.Fatalf("expected error containing %q", c.want)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("error %q does not contain %q", err, c.want)
+			}
+		})
+	}
+}
+
+func TestDumpIncludesPiSection(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	layer := File{
+		Roots: map[string]string{"desktop_config": "~/git/desktop-config"},
+		Pi:    PiSettings{SyncAuth: boolPtr(true)},
+	}
+	cfg, err := Build([]File{Defaults(), layer}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tomlOut, err := Dump(cfg, DumpFormatTOML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"[pi]",
+		"enabled = true",
+		"agent_dir = '/home/u/.pi/agent'",
+		"source = '/home/u/git/desktop-config/pi/agent'",
+		"sync_auth = true",
+	} {
+		if !strings.Contains(string(tomlOut), want) {
+			t.Errorf("TOML dump missing %q:\n%s", want, tomlOut)
+		}
+	}
+
+	jsonOut, err := Dump(cfg, DumpFormatJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(jsonOut, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	pi, ok := decoded["pi"].(map[string]any)
+	if !ok {
+		t.Fatalf("JSON dump has no pi object:\n%s", jsonOut)
+	}
+	if pi["agent_dir"] != "/home/u/.pi/agent" || pi["sync_auth"] != true || pi["enabled"] != true {
+		t.Errorf("unexpected pi section: %#v", pi)
 	}
 }

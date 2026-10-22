@@ -18,7 +18,11 @@ This repository is named `chmouel/rcbin`. The Go module and command remain
 - Dependencies stay minimal:
   - `github.com/spf13/cobra` for the CLI;
   - `github.com/pelletier/go-toml/v2` for TOML;
-  - `golang.org/x/term` for terminal detection and raw-mode prompts.
+  - `golang.org/x/term` for terminal detection and raw-mode prompts;
+  - `golang.org/x/sys` for the atomic no-replace rename in `internal/pi`
+    (`renameat2(RENAME_NOREPLACE)` on Linux, `renamex_np(RENAME_EXCL)` on macOS).
+    `os.Rename` cannot express this: it rejects an existing destination
+    directory and replaces an existing destination file.
 - Prefer the standard library. Do not add dependencies without a concrete need.
 
 ## Layout
@@ -35,6 +39,7 @@ internal/repo/          git state, discovery, sync, hooks
 internal/yadm/          YADM status and sync
 internal/commitui/      lazygit, Emacs, aicommit, direct commit, prompt
 internal/maintenance/   backups and update tasks
+internal/pi/            Pi agent configuration placement
 internal/doctor/        diagnostics
 ```
 
@@ -60,6 +65,22 @@ All ANSI styling must go through `Reporter.paint` or the styled helpers:
 `SuccessLine`, and `Arrow`. `output.ColorFor` disables color when `--no-color`
 is set, `NO_COLOR` is present, or stderr is not a TTY. Nerd Font glyphs belong
 only on the human stderr surface, never in machine stdout.
+
+### Pi agent configuration
+
+`internal/pi` owns placement only: it links a curated set of entries from the
+canonical `desktop-config` checkout into the agent directory, seeds existing
+local entries, adopts conflicts behind `--adopt-pi`, and applies per-host
+overrides. Pi owns package installation. Do not parse `pi list`, call
+`pi install`, or rewrite `settings.json` from rc. `auth.json` stays opt-in
+(`[pi] sync_auth`) because it holds plaintext credentials.
+
+Seeding and adoption must never overwrite anything, so their moves go through
+`renameNoReplace` in `internal/pi/rename_*.go`. Do not substitute `os.Rename` or
+an existence check plus rename there.
+
+`rc sync` places the Pi configuration only after a clean repository and YADM
+phase, and a Pi failure must never skip linking or backup in `rc run`.
 
 ### Exit codes
 

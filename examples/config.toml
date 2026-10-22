@@ -20,6 +20,22 @@ desktop_config = "~/.local/share/desktop-config"
 # rc link recreates this directory and deletes unmanaged files inside it.
 # desktop_bin = "~/.local/bin/desktop"
 
+# Pi agent configuration sync. rc symlinks a curated set of files and directories
+# from <source> into <agent_dir>, seeds existing local files into the repository,
+# and adopts conflicting ones with `rc sync --adopt-pi`. Canonical configuration
+# lives in the desktop-config repository; Pi itself installs the packages listed
+# in settings.json.
+[pi]
+enabled = true
+# Defaults to $PI_CODING_AGENT_DIR, then ~/.pi/agent.
+# agent_dir = "~/.pi/agent"
+# Defaults to <roots.desktop_config>/pi/agent.
+# source = "${HOME}/.local/share/desktop-config/pi/agent"
+# Symlink auth.json too. That copies plaintext OAuth credentials into a Git
+# repository: keep that repository private, and expect to re-run `pi auth login`
+# after a token rotation rather than restoring a backup.
+# sync_auth = false
+
 # Git provider shorthand and the repositories rc clones and synchronizes. A clone
 # value without a slash is resolved as "<provider>/<value>.git"; a full URL is
 # used verbatim. Optional repositories are only synchronized when they exist.

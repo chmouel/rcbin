@@ -29,6 +29,7 @@ func Defaults() File {
 		},
 		Sync:  SyncConfig{Concurrency: 4},
 		Tools: ToolsLayer{Lazygit: "lazygit", Aicommit: "aicommit", Shell: "sh", PreferEmacs: boolPtr(true)},
+		Pi:    PiSettings{Enabled: boolPtr(true), SyncAuth: boolPtr(false)},
 		Doctor: DoctorConfig{
 			TimeoutSeconds: 5,
 			Endpoints: []Endpoint{
