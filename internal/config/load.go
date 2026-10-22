@@ -97,8 +97,8 @@ func DefaultGlobalPath(home string) string {
 }
 
 // EnvVars builds the allowlisted expansion variable set from the process
-// environment. HOME is populated from the OS when absent; GOPATH is only
-// available when explicitly set in the environment.
+// environment. HOME is populated from the OS when absent; GOPATH defaults to
+// ${HOME}/go when unset, matching Go.
 func EnvVars(hostname string) Vars {
 	vars := Vars{}
 	vars["HOME"] = os.Getenv("HOME")
@@ -112,6 +112,8 @@ func EnvVars(hostname string) Vars {
 	}
 	if gopath := os.Getenv("GOPATH"); gopath != "" {
 		vars["GOPATH"] = gopath
+	} else if vars["HOME"] != "" {
+		vars["GOPATH"] = filepath.Join(vars["HOME"], "go")
 	}
 	return vars
 }

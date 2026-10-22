@@ -23,6 +23,8 @@ func TestExpand(t *testing.T) {
 		{"${HOME}/git", "/home/u/git"},
 		{"${GOPATH}/src/${HOST}", "/home/u/go/src/ibra"},
 		{"no/vars", "no/vars"},
+		{"${GOPATH:-/opt/go}/bin", "/home/u/go/bin"},
+		{"${HOST:-x}-${HOST}", "ibra-ibra"},
 	}
 	for _, c := range cases {
 		got, err := expand(c.in, vars)
@@ -41,6 +43,50 @@ func TestExpandUnsetVar(t *testing.T) {
 	_, err := expand("${GOPATH}/x", vars)
 	if err == nil || !strings.Contains(err.Error(), "GOPATH") {
 		t.Fatalf("expected unset-var error, got %v", err)
+	}
+}
+
+func TestExpandFallback(t *testing.T) {
+	cases := []struct {
+		in, gopath, want string
+	}{
+		{"${GOPATH:-~/go}/bin/goimports", "", "/home/u/go/bin/goimports"},
+		{"${GOPATH:-${HOME}/go}/bin", "", "/home/u/go/bin"},
+		{"${GOPATH:-${HOME}/${HOST}}", "", "/home/u/ibra"},
+		{"${GOPATH:-}/bin", "", "/bin"},
+		{"~/${GOPATH:-go}", "", "/home/u/go"},
+		{"${GOPATH:-~/go}/bin", "/srv/go", "/srv/go/bin"},
+	}
+	for _, c := range cases {
+		vars := testVars()
+		vars["GOPATH"] = c.gopath
+		got, err := expand(c.in, vars)
+		if err != nil {
+			t.Fatalf("expand(%q): %v", c.in, err)
+		}
+		if got != c.want {
+			t.Errorf("expand(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestExpandFallbackErrors(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"${NOPE:-/tmp}/x", "unsupported variable(s) NOPE"},
+		{"${GOPATH:-${NOPE}/go}", "unsupported variable(s) NOPE"},
+		{"${GOPATH:-${HOST}/go}", "unset variable(s) HOST"},
+		{"${GOPATH:-~/go", "unterminated"},
+	}
+	for _, c := range cases {
+		vars := testVars()
+		delete(vars, "GOPATH")
+		delete(vars, "HOST")
+		_, err := expand(c.in, vars)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("expand(%q) error = %v, want %q", c.in, err, c.want)
+		}
 	}
 }
 
@@ -64,8 +110,8 @@ func TestEnvVarsOnlyExposeAllowedVariables(t *testing.T) {
 	if vars["HOST"] != "configured-host" {
 		t.Fatalf("HOST = %q, want configured-host", vars["HOST"])
 	}
-	if _, ok := vars["GOPATH"]; ok {
-		t.Fatal("GOPATH should not be synthesized when unset")
+	if vars["GOPATH"] != "/home/u/go" {
+		t.Fatalf("GOPATH = %q, want /home/u/go when unset", vars["GOPATH"])
 	}
 	if _, ok := vars["NOPE"]; ok {
 		t.Fatal("unsupported environment variable should not be exposed")
@@ -413,6 +459,35 @@ func TestLoadHostExactDuplicateTargetsAreIgnored(t *testing.T) {
 	}
 	if len(cfg.Links) != 1 {
 		t.Fatalf("expected exact duplicate link to be deduped, got %d", len(cfg.Links))
+	}
+}
+
+func TestLoadHostLinkSourceFallback(t *testing.T) {
+	home := t.TempDir()
+	hosts := filepath.Join(home, ".config", "yadm", "hosts")
+	profile := filepath.Join(hosts, "common")
+	if err := os.MkdirAll(profile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "?${GOPATH:-~/go}/bin/goimports .local/bin/goimports\n"
+	if err := os.WriteFile(filepath.Join(profile, "rc"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(Options{
+		GlobalPath: filepath.Join(home, ".config", "rc", "config.toml"),
+		HostsRoot:  hosts,
+		Hostname:   "ibra",
+		Vars:       Vars{"HOME": home, "HOST": "ibra"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Links) != 1 {
+		t.Fatalf("expected 1 link, got %d", len(cfg.Links))
+	}
+	if got, want := cfg.Links[0].Source, filepath.Join(home, "go", "bin", "goimports"); got != want {
+		t.Errorf("link source = %q, want %q", got, want)
 	}
 }
 

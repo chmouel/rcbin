@@ -107,9 +107,12 @@ rc config validate --config examples/config.toml
 ```
 
 Only path fields expand variables. Supported expansion is a leading `~` plus
-`${HOME}`, `${HOST}`, and `${GOPATH}` anywhere in the path. Command bodies
-(`argv` and `shell`) are never expanded, so shell variables survive. Referencing
-an unset variable is a validation error.
+`${HOME}`, `${HOST}`, and `${GOPATH}` anywhere in the path, and the shell-style
+fallback `${NAME:-default}`, used when NAME is unset or empty. The default may
+start with `~` and contain nested references. `GOPATH` defaults to `${HOME}/go`
+when it is not set in the environment. Command bodies (`argv` and `shell`) are
+never expanded, so shell variables survive. Referencing an unset variable
+without a fallback is a validation error.
 
 ### Determinism and comments
 

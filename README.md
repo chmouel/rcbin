@@ -195,9 +195,12 @@ override files with the same basename.
 `rc link` recreates `${desktop_bin}` before linking binaries and deletes
 unmanaged files there. Keep that directory for rc-managed desktop scripts.
 
-Paths support a leading `~` plus `${HOME}`, `${HOST}`, and `${GOPATH}`. Unset
-variables fail validation. Commands use either `argv = [...]` or `shell = "..."`,
-never both.
+Paths support a leading `~` plus `${HOME}`, `${HOST}`, and `${GOPATH}`.
+`GOPATH` defaults to `~/go` when it is not set in the environment. Use
+`${NAME:-default}` to fall back when a variable is unset or empty, for example
+`?${GOPATH:-~/go}/bin/goimports .local/bin/goimports`. Unset variables without
+a fallback fail validation. Commands use either `argv = [...]` or
+`shell = "..."`, never both.
 
 ## Pi agent configuration
 
