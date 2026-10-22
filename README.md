@@ -229,11 +229,20 @@ A shared entry can be replaced per host by a file or directory at
 there is no merge. For example `hosts/maximus/models.json` is linked instead of
 `models.json` on host `maximus`.
 
-`auth.json` holds plaintext OAuth credentials, so it is only synced with
-`[pi] sync_auth = true`. Keep the canonical repository private, and expect to run
-`pi auth login` again after a token rotation instead of restoring a backup.
-Whenever the credential file is in play, whether in the shared tree or a host
-override, rc restricts it to `0600` and fails the Pi phase if it cannot.
+`auth.json` holds API keys and OAuth tokens, so it never goes into Git. With
+`[pi] sync_auth = true` (the default) rc keeps it in sync with the encrypted
+`pass` entry `pi/auth.json`, set by `[pi] auth_pass_entry`. The local file stays
+a regular `0600` file that Pi can keep refreshing. rc remembers what was last
+synced: a change on one side is copied to the other, and a change on both sides
+stops the Pi phase until `rc sync --adopt-pi` backs up the local copy and takes
+the pass entry. The password store is honored through `PASSWORD_STORE_DIR`, and a
+new entry shows up in the store like any other `pass insert`, so YADM commits it
+on the next sync. pass is only asked to decrypt when the encrypted entry changed.
+Machines without `pass` or an initialized store skip this step.
+
+Earlier versions symlinked `auth.json` to a plaintext copy in the canonical
+tree. rc now reports that symlink, `--adopt-pi` replaces it with a local file
+stored in pass, and rc warns until you remove the plaintext copy from Git.
 
 Moves during seeding and adoption never overwrite existing files: they use the
 platform's atomic no-replace rename, so a concurrent writer always wins and keeps

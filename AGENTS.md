@@ -72,8 +72,10 @@ only on the human stderr surface, never in machine stdout.
 canonical `desktop-config` checkout into the agent directory, seeds existing
 local entries, adopts conflicts behind `--adopt-pi`, and applies per-host
 overrides. Pi owns package installation. Do not parse `pi list`, call
-`pi install`, or rewrite `settings.json` from rc. `auth.json` stays opt-in
-(`[pi] sync_auth`) because it holds plaintext credentials.
+`pi install`, or rewrite `settings.json` from rc. `auth.json` is never linked
+or written to Git: `[pi] sync_auth` keeps it in sync with an encrypted `pass`
+entry (`internal/pi/auth.go`), and local writes take Pi's own
+`auth.json.lock`.
 
 Seeding and adoption must never overwrite anything, so their moves go through
 `renameNoReplace` in `internal/pi/rename_*.go`. Do not substitute `os.Rename` or

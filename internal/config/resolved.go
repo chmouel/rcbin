@@ -53,7 +53,13 @@ type PiConfig struct {
 	// SourceExplicit records that the user set [pi].source, which allows
 	// creating it even when roots.desktop_config does not exist.
 	SourceExplicit bool
-	SyncAuth       bool
+	// SyncAuth keeps auth.json in sync with the AuthPassEntry pass entry.
+	SyncAuth      bool
+	AuthPassEntry string
+	// PasswordStore is $PASSWORD_STORE_DIR, or ~/.password-store.
+	PasswordStore string
+	// AuthStatePath records what was last synced between auth.json and pass.
+	AuthStatePath string
 }
 
 // Config is the fully merged, expanded, and validated configuration consumed by

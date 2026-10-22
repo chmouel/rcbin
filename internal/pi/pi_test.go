@@ -435,7 +435,7 @@ func TestLinkIntoDoesNotRestoreOnUnexpectedStatError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
-	err := s.linkInto(filepath.Join(f.root, "canonical.json"), filepath.Join(parent, "settings.json"), moved, false)
+	err := s.linkInto(filepath.Join(f.root, "canonical.json"), filepath.Join(parent, "settings.json"), moved)
 	if err == nil || !strings.Contains(err.Error(), "no longer absent") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -586,7 +586,7 @@ func TestSyncSerializesOnSharedSourceLock(t *testing.T) {
 func TestPreflightReflectsCurrentTargetState(t *testing.T) {
 	f := newFixture(t)
 	mkdir(t, f.source)
-	entries := curatedEntries(false)
+	entries := curatedEntries()
 	s := f.syncer()
 
 	plan, fatal, conflicts := s.preflight(f.source, f.agent, entries)
@@ -617,86 +617,6 @@ func TestPreflightReflectsCurrentTargetState(t *testing.T) {
 	if len(conflicts) != 1 {
 		t.Fatalf("conflicts = %v, want the newly introduced source entry", conflicts)
 	}
-}
-
-func TestSyncAuthOptOut(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	writeFile(t, filepath.Join(f.source, AuthFile), "{}")
-
-	if err := f.syncer().Sync(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Lstat(filepath.Join(f.agent, AuthFile)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("auth.json must not be linked when sync_auth is false")
-	}
-}
-
-func TestSyncAuthConflictWithoutAdopt(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	writeFile(t, filepath.Join(f.source, AuthFile), "canonical")
-	writeFile(t, filepath.Join(f.agent, AuthFile), "local")
-
-	s := f.syncer()
-	s.SyncAuth = true
-	err := s.Sync(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "credentials") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got := readFile(t, filepath.Join(f.agent, AuthFile)); got != "local" {
-		t.Fatalf("local credentials must be untouched, got %q", got)
-	}
-}
-
-func TestSyncAuthSeedRequiresAdoptAndRestrictsPermissions(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	writeFile(t, filepath.Join(f.agent, AuthFile), "local-token")
-	if err := os.Chmod(filepath.Join(f.agent, AuthFile), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := f.syncer()
-	s.SyncAuth = true
-	if err := s.Sync(context.Background()); err == nil {
-		t.Fatal("seeding live credentials must require --adopt-pi")
-	}
-
-	s.Adopt = true
-	if err := s.Sync(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	requireSymlinkTo(t, filepath.Join(f.agent, AuthFile), filepath.Join(f.source, AuthFile))
-	requireMode(t, filepath.Join(f.source, AuthFile), 0o600)
-	requireLog(t, f.logs, "readable by other users")
-}
-
-func TestSyncAuthBackupSymlinkIsNotChmodded(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("mode checks do not apply to root")
-	}
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	writeFile(t, filepath.Join(f.source, AuthFile), "canonical")
-	external := filepath.Join(f.root, "external-token")
-	writeFile(t, external, "external")
-	if err := os.Chmod(external, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	mkdir(t, f.agent)
-	if err := os.Symlink(external, filepath.Join(f.agent, AuthFile)); err != nil {
-		t.Fatal(err)
-	}
-
-	s := f.syncer()
-	s.SyncAuth = true
-	s.Adopt = true
-	if err := s.Sync(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	requireMode(t, external, 0o644)
-	requireLog(t, f.logs, "preserved symlink")
 }
 
 func TestSyncDryRunChangesNothing(t *testing.T) {
@@ -875,59 +795,6 @@ func TestVersionAtLeast(t *testing.T) {
 	}
 }
 
-func TestSyncSecuresHostOverrideCredentials(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	hostAuth := filepath.Join(f.source, HostDir, "ibra", AuthFile)
-	writeFile(t, hostAuth, "host-token")
-	if err := os.Chmod(hostAuth, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := f.syncer()
-	s.SyncAuth = true
-	if err := s.Sync(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	requireSymlinkTo(t, filepath.Join(f.agent, AuthFile), hostAuth)
-	requireMode(t, hostAuth, 0o600)
-}
-
-func TestSyncSecuresCredentialsOnAnAlreadyCorrectLink(t *testing.T) {
-	f := newFixture(t)
-	canonical := filepath.Join(f.source, AuthFile)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	writeFile(t, canonical, "canonical")
-	mkdir(t, f.agent)
-	if err := os.Symlink(canonical, filepath.Join(f.agent, AuthFile)); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(canonical, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := f.syncer()
-	s.SyncAuth = true
-	if err := s.Sync(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	requireMode(t, canonical, 0o600)
-}
-
-func TestSyncReportsCredentialChmodFailure(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	writeFile(t, filepath.Join(f.source, AuthFile), "canonical")
-
-	s := f.syncer()
-	s.SyncAuth = true
-	s.chmodFile = func(*os.File, os.FileMode) error { return errors.New("chmod refused") }
-	err := s.Sync(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "chmod refused") {
-		t.Fatalf("a credential that stays readable must fail the sync, got %v", err)
-	}
-}
-
 func TestSyncRefusesWrongKindLocalEntry(t *testing.T) {
 	f := newFixture(t)
 	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
@@ -1001,135 +868,6 @@ func TestSyncRechecksTargetsUnderTheLock(t *testing.T) {
 	}
 }
 
-func TestSyncAuthSeedRestrictsTheCredentialBeforePublishingIt(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	localAuth := filepath.Join(f.agent, AuthFile)
-	writeFile(t, localAuth, "local-token")
-	if err := os.Chmod(localAuth, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := f.syncer()
-	s.SyncAuth = true
-	s.Adopt = true
-	// -1 means the credential was never seen at publish time: the canonical tree
-	// can be traversable, so the window between the move and a later chmod is a
-	// real exposure.
-	modeAtPublish := os.FileMode(0o777)
-	s.renamePath = func(src, dst string) error {
-		if filepath.Base(src) == AuthFile {
-			info, err := os.Stat(src)
-			if err != nil {
-				return err
-			}
-			modeAtPublish = info.Mode().Perm()
-		}
-		return renameNoReplace(src, dst)
-	}
-
-	if err := s.Sync(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if modeAtPublish != 0o600 {
-		t.Fatalf("credential mode when it entered the canonical tree = %04o, want 0600", modeAtPublish)
-	}
-}
-
-func TestSyncAuthSeedPublishesNothingWhenChmodFails(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	localAuth := filepath.Join(f.agent, AuthFile)
-	writeFile(t, localAuth, "local-token")
-
-	s := f.syncer()
-	s.SyncAuth = true
-	s.Adopt = true
-	s.chmodFile = func(*os.File, os.FileMode) error { return errors.New("chmod refused") }
-
-	err := s.Sync(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "chmod refused") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(err.Error(), ".rc-pi-stage-") {
-		t.Fatalf("the error should name where the credential was preserved: %v", err)
-	}
-	// The capture happens in a staging directory before the move would publish
-	// it, so the credential is left there instead of in the canonical tree.
-	if got := readFile(t, stagingCredential(t, f.source)); got != "local-token" {
-		t.Fatalf("the captured credential lost its contents, got %q", got)
-	}
-	if _, err := os.Lstat(localAuth); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("the local credential should have been captured for staging, err=%v", err)
-	}
-	if _, err := os.Lstat(filepath.Join(f.source, AuthFile)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("an unprotected credential must never reach the canonical tree")
-	}
-}
-
-// stagingCredential returns the credential captured in the staging directory
-// left behind when publication fails.
-func stagingCredential(t *testing.T, source string) string {
-	t.Helper()
-	stages, err := filepath.Glob(filepath.Join(source, ".rc-pi-stage-*", AuthFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(stages) != 1 {
-		t.Fatalf("staging copies = %v, want exactly one", stages)
-	}
-	return stages[0]
-}
-
-func TestSyncAuthSeedPublishesTheCapturedInodeNotAConcurrentReplacement(t *testing.T) {
-	f := newFixture(t)
-	writeFile(t, filepath.Join(f.source, "settings.json"), "{}")
-	localAuth := filepath.Join(f.agent, AuthFile)
-	writeFile(t, localAuth, "local-token")
-	if err := os.Chmod(localAuth, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := f.syncer()
-	s.SyncAuth = true
-	s.Adopt = true
-	replaced := false
-	s.renamePath = func(src, dst string) error {
-		if strings.Contains(src, ".rc-pi-stage-") {
-			// A credential writer saves a fresh 0644 file over the original path
-			// after rc restricted the captured inode.
-			if err := os.WriteFile(localAuth, []byte("fresh-token"), 0o644); err != nil {
-				return err
-			}
-			replaced = true
-		}
-		return renameNoReplace(src, dst)
-	}
-
-	err := s.Sync(context.Background())
-	if !replaced {
-		t.Fatal("the concurrent writer never ran")
-	}
-	if err == nil {
-		t.Fatal("linking must fail when the target reappeared")
-	}
-
-	canonical := filepath.Join(f.source, AuthFile)
-	if got := readFile(t, canonical); got != "local-token" {
-		t.Fatalf("published content = %q, want the restricted inode rc captured", got)
-	}
-	info, statErr := os.Stat(canonical)
-	if statErr != nil {
-		t.Fatal(statErr)
-	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("published mode = %04o, want 0600", perm)
-	}
-	if got := readFile(t, localAuth); got != "fresh-token" {
-		t.Fatalf("the concurrent save was lost: %q", got)
-	}
-}
-
 func TestSyncRefusesCaseAliasedSourceAndAgent(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "CaseTree"), 0o755); err != nil {
@@ -1167,28 +905,27 @@ func TestSyncRefusesCaseAliasedSourceAndAgent(t *testing.T) {
 
 func TestSyncRefusesCanonicalSymlinkIntoTheAgentDirectory(t *testing.T) {
 	f := newFixture(t)
-	localAuth := filepath.Join(f.agent, AuthFile)
-	writeFile(t, localAuth, "local-token")
-	// The canonical credential is a symlink back to the local file, so adopting
+	localSettings := filepath.Join(f.agent, "settings.json")
+	writeFile(t, localSettings, "local")
+	// The canonical entry is a symlink back to the local file, so adopting
 	// the local file would repoint the link at itself.
 	if err := os.MkdirAll(f.source, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(localAuth, filepath.Join(f.source, AuthFile)); err != nil {
+	if err := os.Symlink(localSettings, filepath.Join(f.source, "settings.json")); err != nil {
 		t.Fatal(err)
 	}
 
 	s := f.syncer()
-	s.SyncAuth = true
 	s.Adopt = true
 	err := s.Sync(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "symlink into the agent directory") {
 		t.Fatalf("error = %v, want a refusal to link a self-referential source", err)
 	}
-	if got := readFile(t, localAuth); got != "local-token" {
-		t.Fatalf("the local credential was moved: %q", got)
+	if got := readFile(t, localSettings); got != "local" {
+		t.Fatalf("the local entry was moved: %q", got)
 	}
-	if k, err := lstatKind(localAuth); err != nil || k != kindFile {
+	if k, err := lstatKind(localSettings); err != nil || k != kindFile {
 		t.Fatalf("local entry = %v (err=%v), want the untouched regular file", k, err)
 	}
 }

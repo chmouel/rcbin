@@ -137,6 +137,8 @@ type PiSettings struct {
 	AgentDir string `toml:"agent_dir"`
 	Source   string `toml:"source"`
 	SyncAuth *bool  `toml:"sync_auth"`
+	// AuthPassEntry is the pass entry that holds auth.json when SyncAuth is set.
+	AuthPassEntry string `toml:"auth_pass_entry"`
 }
 
 // File is the in-memory representation of any configuration layer. Global TOML

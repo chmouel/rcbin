@@ -273,33 +273,6 @@ func nextFreeBackup(target string) (string, error) {
 	return "", fmt.Errorf("no free backup name for %s", target)
 }
 
-// secureEffectiveAuth restricts the credential entry that is actually in play,
-// whether it lives in the shared tree or in a host override, and whether the
-// target was linked just now or was already correct.
-func (s *Syncer) secureEffectiveAuth(source, host string) error {
-	path := filepath.Join(source, AuthFile)
-	k, err := lstatKind(path)
-	if err != nil {
-		return err
-	}
-	hostPath := filepath.Join(source, HostDir, host, AuthFile)
-	hostKind, err := lstatKind(hostPath)
-	if err != nil {
-		return err
-	}
-	if hostKind != kindAbsent {
-		path, k = hostPath, hostKind
-	}
-	if k == kindAbsent {
-		return nil
-	}
-	if k == kindSymlink {
-		s.Rep.Debugf("pi: %s is a symlink, leaving its mode unchanged", path)
-		return nil
-	}
-	return s.secureAuthPath(path)
-}
-
 // secureAuthPath restricts a regular credential file to its owner. The file is
 // opened with O_NOFOLLOW and chmodded through the descriptor, so a symlink
 // swapped in between inspection and chmod cannot redirect the change to a
@@ -346,34 +319,6 @@ func (s *Syncer) secureCredential(path, label string) error {
 // openCredential opens path without following a final symlink.
 func (s *Syncer) openCredential(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW, 0)
-}
-
-// publishSecret moves a live credential into the canonical tree without ever
-// exposing an unprotected inode there. The entry is first captured in an
-// owner-only staging directory on the same filesystem, so later writes through
-// the original pathname cannot swap the inode that is about to be published;
-// the captured file is restricted through its descriptor and only then renamed
-// into place.
-func (s *Syncer) publishSecret(src, dst string) error {
-	stage, err := os.MkdirTemp(filepath.Dir(dst), ".rc-pi-stage-")
-	if err != nil {
-		return fmt.Errorf("creating a staging directory next to %s: %w", dst, err)
-	}
-	staged := filepath.Join(stage, filepath.Base(dst))
-	if err := s.moveNoReplace(src, staged); err != nil {
-		_ = os.Remove(stage)
-		return err
-	}
-	if err := s.secureCredential(staged, dst); err != nil {
-		return fmt.Errorf("%w (the credential is preserved at %s)", err, staged)
-	}
-	if err := s.moveNoReplace(staged, dst); err != nil {
-		return fmt.Errorf("%w (the credential is preserved at %s)", err, staged)
-	}
-	if err := os.Remove(stage); err != nil {
-		s.Rep.Debugf("pi: could not remove the staging directory %s: %v", stage, err)
-	}
-	return nil
 }
 
 func (s *Syncer) secureBackup(path string) error {

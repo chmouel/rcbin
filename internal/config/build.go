@@ -166,6 +166,9 @@ func Build(layers []File, vars Vars, hostname string) (*Config, error) {
 		if f.Pi.SyncAuth != nil {
 			cfg.Pi.SyncAuth = *f.Pi.SyncAuth
 		}
+		if f.Pi.AuthPassEntry != "" {
+			cfg.Pi.AuthPassEntry = f.Pi.AuthPassEntry
+		}
 		if f.Pi.AgentDir != "" {
 			piAgentDir = f.Pi.AgentDir
 		}
@@ -255,6 +258,9 @@ func Build(layers []File, vars Vars, hostname string) (*Config, error) {
 		}
 		cfg.ManifestPath = filepath.Join(base, "rc", "managed-links.json")
 	}
+	add(validatePassEntry(cfg.Pi.AuthPassEntry))
+	cfg.Pi.PasswordStore = resolvePasswordStore(home)
+	cfg.Pi.AuthStatePath = filepath.Join(filepath.Dir(cfg.ManifestPath), "pi-auth-state.json")
 
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
@@ -457,6 +463,28 @@ func resolvePiAgentDir(explicit string, vars Vars, home string) (string, error) 
 		return "", nil
 	}
 	return filepath.Join(home, ".pi", "agent"), nil
+}
+
+// validatePassEntry accepts a pass entry name relative to the store, such as
+// "pi/auth.json".
+func validatePassEntry(entry string) error {
+	if entry == "" {
+		return errors.New("pi.auth_pass_entry must not be empty")
+	}
+	if strings.HasPrefix(entry, "/") || filepath.Clean(entry) != entry || entry == ".." || strings.HasPrefix(entry, "../") {
+		return fmt.Errorf("pi.auth_pass_entry %q must be a clean name relative to the password store", entry)
+	}
+	return nil
+}
+
+func resolvePasswordStore(home string) string {
+	if env := os.Getenv("PASSWORD_STORE_DIR"); env != "" {
+		return filepath.Clean(env)
+	}
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".password-store")
 }
 
 func resolvePiSource(explicit string, sourceExplicit bool, roots map[string]string, vars Vars) (string, error) {

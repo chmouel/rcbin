@@ -236,15 +236,18 @@ func syncPi(ctx context.Context, g *globals, deps Deps, rep *output.Reporter, cf
 		return nil
 	}
 	s := &pi.Syncer{
-		R:           deps.Runner,
-		Rep:         rep,
-		AgentDir:    cfg.Pi.AgentDir,
-		Source:      cfg.Pi.Source,
-		Host:        cfg.Hostname,
-		DryRun:      g.dryRun,
-		Adopt:       g.adoptPi,
-		SyncAuth:    cfg.Pi.SyncAuth,
-		AllowCreate: piCreationAllowed(cfg),
+		R:             deps.Runner,
+		Rep:           rep,
+		AgentDir:      cfg.Pi.AgentDir,
+		Source:        cfg.Pi.Source,
+		Host:          cfg.Hostname,
+		DryRun:        g.dryRun,
+		Adopt:         g.adoptPi,
+		SyncAuth:      cfg.Pi.SyncAuth,
+		AuthEntry:     cfg.Pi.AuthPassEntry,
+		PasswordStore: cfg.Pi.PasswordStore,
+		AuthState:     cfg.Pi.AuthStatePath,
+		AllowCreate:   piCreationAllowed(cfg),
 	}
 	return op(s.Sync(ctx))
 }

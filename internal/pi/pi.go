@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/chmouel/rc/internal/output"
 	"github.com/chmouel/rc/internal/runner"
@@ -25,7 +26,8 @@ const (
 	// SettingsFile is the canonical Pi settings file, where configured package
 	// sources live.
 	SettingsFile = "settings.json"
-	// AuthFile holds plaintext provider credentials and is opt-in.
+	// AuthFile holds provider credentials. It is never linked; with SyncAuth
+	// it is kept in sync with an encrypted pass entry.
 	AuthFile = "auth.json"
 	// HostDir is the directory holding per-host entry overrides.
 	HostDir = "hosts"
@@ -36,13 +38,12 @@ const (
 var hostNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 type entry struct {
-	name   string
-	isDir  bool
-	secret bool
+	name  string
+	isDir bool
 }
 
-func curatedEntries(syncAuth bool) []entry {
-	entries := []entry{
+func curatedEntries() []entry {
+	return []entry{
 		{name: SettingsFile},
 		{name: "models.json"},
 		{name: "keybindings.json"},
@@ -53,10 +54,6 @@ func curatedEntries(syncAuth bool) []entry {
 		{name: "prompts", isDir: true},
 		{name: "themes", isDir: true},
 	}
-	if syncAuth {
-		entries = append(entries, entry{name: AuthFile, secret: true})
-	}
-	return entries
 }
 
 // Syncer links the canonical Pi agent configuration into an agent directory.
@@ -71,8 +68,14 @@ type Syncer struct {
 	DryRun bool
 	// Adopt allows backing up conflicting local entries before linking.
 	Adopt bool
-	// SyncAuth includes auth.json in the curated entry set.
+	// SyncAuth keeps auth.json in sync with the AuthEntry pass entry.
 	SyncAuth bool
+	// AuthEntry is the pass entry name, DefaultAuthEntry when empty.
+	AuthEntry string
+	// PasswordStore is the pass store directory.
+	PasswordStore string
+	// AuthState is the file recording the last synced auth.json state.
+	AuthState string
 	// AllowCreate permits creating a missing Source. It is set when the user
 	// configured [pi].source explicitly or when roots.desktop_config exists.
 	AllowCreate bool
@@ -81,6 +84,8 @@ type Syncer struct {
 	renamePath  func(oldPath, newPath string) error
 	symlinkPath func(oldPath, newPath string) error
 	chmodFile   func(f *os.File, mode os.FileMode) error
+	// piLockWait bounds the wait for Pi's auth.json lock; zero is the default.
+	piLockWait time.Duration
 	// afterPreflight runs after the unlocked preflight, so tests can mutate the
 	// targets and prove Sync repeats its checks under the locks.
 	afterPreflight func()
@@ -158,7 +163,8 @@ func (s *Syncer) Sync(ctx context.Context) error {
 		return fmt.Errorf("pi source %s is not a directory", source)
 	}
 
-	entries := curatedEntries(s.SyncAuth)
+	s.warnPlaintextAuth(source)
+	entries := curatedEntries()
 	plan, fatal, conflicts := s.preflight(source, agentDir, entries)
 	if len(fatal) > 0 {
 		return errors.Join(fatal...)
@@ -172,7 +178,10 @@ func (s *Syncer) Sync(ctx context.Context) error {
 
 	if s.DryRun {
 		s.reportPlan(plan, sourceKind == kindAbsent, agentDir, source)
-		return nil
+		if k, err := lstatKind(agentDir); err != nil || k == kindAbsent {
+			return err
+		}
+		return s.syncAuth(ctx, agentDir)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -237,11 +246,9 @@ func (s *Syncer) Sync(ctx context.Context) error {
 		}
 	}
 
-	if s.SyncAuth {
-		if err := s.secureEffectiveAuth(source, s.Host); err != nil {
-			failures = append(failures, err)
-			s.Rep.Errorf("pi: %v", err)
-		}
+	if err := s.syncAuth(ctx, agentDir); err != nil {
+		failures = append(failures, err)
+		s.Rep.Errorf("pi: %v", err)
 	}
 
 	if len(plan) > 0 {
@@ -292,7 +299,6 @@ type action struct {
 	sourcePath string
 	targetPath string
 	backupPath string
-	secret     bool
 }
 
 func (s *Syncer) preflight(source, agentDir string, entries []entry) (plan []action, fatal, conflicts []error) {
@@ -346,7 +352,7 @@ func (s *Syncer) preflight(source, agentDir string, entries []entry) (plan []act
 			continue
 		}
 
-		a := action{name: e.name, sourcePath: srcPath, targetPath: targetPath, secret: e.secret}
+		a := action{name: e.name, sourcePath: srcPath, targetPath: targetPath}
 		switch tgtKind {
 		case kindAbsent:
 			if srcPresent {
@@ -383,12 +389,8 @@ func (s *Syncer) preflight(source, agentDir string, entries []entry) (plan []act
 			case srcPresent && s.Adopt:
 				a.kind = actAdopt
 				plan = append(plan, a)
-			case srcPresent && e.secret:
-				conflicts = append(conflicts, fmt.Errorf("%s holds live Pi credentials and %s also exists; --adopt-pi backs the local copy up", targetPath, srcPath))
 			case srcPresent:
 				conflicts = append(conflicts, fmt.Errorf("%s already exists and %s also exists", targetPath, srcPath))
-			case e.secret && !s.Adopt:
-				conflicts = append(conflicts, fmt.Errorf("%s holds live Pi credentials; moving it into %s requires --adopt-pi", targetPath, sharedPath))
 			default:
 				// Seed into the shared tree, which is the only copy in play.
 				a.kind = actSeed
@@ -418,18 +420,10 @@ func (s *Syncer) apply(a *action) error {
 		if err := os.MkdirAll(filepath.Dir(a.sourcePath), 0o755); err != nil {
 			return fmt.Errorf("creating %s: %w", filepath.Dir(a.sourcePath), err)
 		}
-		if a.secret {
-			// Stage and restrict the credential before it appears in the
-			// canonical tree, whose directories may be traversable.
-			if err := s.publishSecret(a.targetPath, a.sourcePath); err != nil {
-				return err
-			}
-			return s.linkInto(a.sourcePath, a.targetPath, a.sourcePath, true)
-		}
 		if err := s.moveNoReplace(a.targetPath, a.sourcePath); err != nil {
 			return err
 		}
-		return s.linkInto(a.sourcePath, a.targetPath, a.sourcePath, false)
+		return s.linkInto(a.sourcePath, a.targetPath, a.sourcePath)
 	case actAdopt:
 		backup, err := nextFreeBackup(a.targetPath)
 		if err != nil {
@@ -439,12 +433,7 @@ func (s *Syncer) apply(a *action) error {
 			return err
 		}
 		a.backupPath = backup
-		if a.secret {
-			if err := s.secureBackup(backup); err != nil {
-				return err
-			}
-		}
-		return s.linkInto(a.sourcePath, a.targetPath, backup, a.secret)
+		return s.linkInto(a.sourcePath, a.targetPath, backup)
 	}
 	return nil
 }
@@ -452,16 +441,9 @@ func (s *Syncer) apply(a *action) error {
 // linkInto creates the symlink and restores the moved entry when that fails. It
 // never overwrites a target that reappeared, and it never restores on a stat
 // error it cannot interpret.
-func (s *Syncer) linkInto(sourcePath, targetPath, movedTo string, secret bool) error {
+func (s *Syncer) linkInto(sourcePath, targetPath, movedTo string) error {
 	err := s.symlink()(sourcePath, targetPath)
 	if err == nil {
-		if secret {
-			// Verify, rather than tighten: publishSecret already restricted the
-			// credential before it entered the canonical tree.
-			if err := s.secureAuthPath(sourcePath); err != nil {
-				return fmt.Errorf("linked %s -> %s but could not protect the credentials: %w", targetPath, sourcePath, err)
-			}
-		}
 		return nil
 	}
 

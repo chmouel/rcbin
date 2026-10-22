@@ -33,10 +33,10 @@ enabled = true
 # agent_dir = "~/.pi/agent"
 # Defaults to <roots.desktop_config>/pi/agent.
 # source = "${HOME}/.local/share/desktop-config/pi/agent"
-# Symlink auth.json too. That copies plaintext OAuth credentials into a Git
-# repository: keep that repository private, and expect to re-run `pi auth login`
-# after a token rotation rather than restoring a backup.
-# sync_auth = false
+# Keep auth.json in sync with an encrypted pass entry, in both directions.
+# Skipped when pass or an initialized password store is missing.
+# sync_auth = true
+# auth_pass_entry = "pi/auth.json"
 
 # Git provider shorthand and the repositories rc clones and synchronizes. A clone
 # value without a slash is resolved as "<provider>/<value>.git"; a full URL is

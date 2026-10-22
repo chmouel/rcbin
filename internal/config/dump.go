@@ -53,10 +53,11 @@ type dumpDoctor struct {
 }
 
 type dumpPi struct {
-	Enabled  bool   `toml:"enabled" json:"enabled"`
-	AgentDir string `toml:"agent_dir" json:"agent_dir"`
-	Source   string `toml:"source" json:"source"`
-	SyncAuth bool   `toml:"sync_auth" json:"sync_auth"`
+	Enabled       bool   `toml:"enabled" json:"enabled"`
+	AgentDir      string `toml:"agent_dir" json:"agent_dir"`
+	Source        string `toml:"source" json:"source"`
+	SyncAuth      bool   `toml:"sync_auth" json:"sync_auth"`
+	AuthPassEntry string `toml:"auth_pass_entry" json:"auth_pass_entry"`
 }
 
 type dumpLink struct {
@@ -148,10 +149,11 @@ func newDumpConfig(cfg *Config) dumpConfig {
 		Tools:    dumpTools{Lazygit: cfg.Tools.Lazygit, Aicommit: cfg.Tools.Aicommit, Shell: cfg.Tools.Shell, PreferEmacs: cfg.Tools.PreferEmacs},
 		Doctor:   dumpDoctor{Endpoints: cloneEndpoints(cfg.Doctor.Endpoints), TimeoutSeconds: cfg.Doctor.TimeoutSeconds},
 		Pi: dumpPi{
-			Enabled:  cfg.Pi.Enabled,
-			AgentDir: cfg.Pi.AgentDir,
-			Source:   cfg.Pi.Source,
-			SyncAuth: cfg.Pi.SyncAuth,
+			Enabled:       cfg.Pi.Enabled,
+			AgentDir:      cfg.Pi.AgentDir,
+			Source:        cfg.Pi.Source,
+			SyncAuth:      cfg.Pi.SyncAuth,
+			AuthPassEntry: cfg.Pi.AuthPassEntry,
 		},
 		Links:        dumpLinks(cfg.Links),
 		Bins:         dumpBins(cfg.Bins),

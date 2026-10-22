@@ -721,8 +721,11 @@ func TestPiDefaultsAndDesktopConfigSource(t *testing.T) {
 	if !cfg.Pi.Enabled {
 		t.Error("pi.enabled should default to true")
 	}
-	if cfg.Pi.SyncAuth {
-		t.Error("pi.sync_auth should default to false")
+	if !cfg.Pi.SyncAuth {
+		t.Error("pi.sync_auth should default to true")
+	}
+	if got, want := cfg.Pi.AuthPassEntry, "pi/auth.json"; got != want {
+		t.Errorf("auth_pass_entry=%q want %q", got, want)
 	}
 	if cfg.Pi.SourceExplicit {
 		t.Error("derived source must not be marked explicit")
@@ -755,7 +758,7 @@ func TestPiExplicitSourceAndAgentDir(t *testing.T) {
 		AgentDir: "${HOME}/.config/pi-agent",
 		Source:   "${HOME}/src/pi",
 		Enabled:  boolPtr(false),
-		SyncAuth: boolPtr(true),
+		SyncAuth: boolPtr(false),
 	}}
 	cfg, err := Build([]File{Defaults(), layer}, testVars(), "ibra")
 	if err != nil {
@@ -773,8 +776,25 @@ func TestPiExplicitSourceAndAgentDir(t *testing.T) {
 	if cfg.Pi.Enabled {
 		t.Error("explicit enabled=false must win over the default")
 	}
-	if !cfg.Pi.SyncAuth {
-		t.Error("explicit sync_auth=true must win over the default")
+	if cfg.Pi.SyncAuth {
+		t.Error("explicit sync_auth=false must win over the default")
+	}
+}
+
+func TestPiAuthPassEntryValidation(t *testing.T) {
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	t.Setenv("PASSWORD_STORE_DIR", "/srv/pass")
+	cfg, err := Build([]File{Defaults(), {Pi: PiSettings{AuthPassEntry: "agents/pi"}}}, testVars(), "ibra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Pi.AuthPassEntry != "agents/pi" || cfg.Pi.PasswordStore != "/srv/pass" {
+		t.Errorf("entry=%q store=%q", cfg.Pi.AuthPassEntry, cfg.Pi.PasswordStore)
+	}
+	for _, bad := range []string{"/abs/auth", "../outside", "pi//auth", "pi/"} {
+		if _, err := Build([]File{Defaults(), {Pi: PiSettings{AuthPassEntry: bad}}}, testVars(), "ibra"); err == nil || !strings.Contains(err.Error(), "auth_pass_entry") {
+			t.Errorf("entry %q: err=%v, want a validation error", bad, err)
+		}
 	}
 }
 
