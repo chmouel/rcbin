@@ -47,7 +47,6 @@ func curatedEntries() []entry {
 		{name: SettingsFile},
 		{name: "models.json"},
 		{name: "keybindings.json"},
-		{name: "mcp.json"},
 		{name: "AGENTS.md"},
 		{name: "extensions", isDir: true},
 		{name: "skills", isDir: true},

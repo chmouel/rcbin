@@ -213,8 +213,8 @@ in the `desktop-config` repository, and every machine symlinks it into place:
 ```
 
 The synced entries are `settings.json`, `models.json`, `keybindings.json`,
-`mcp.json`, `AGENTS.md`, and the `extensions/`, `skills/`, `prompts/`, and
-`themes/` directories. Machine-local state such as `sessions/`, `npm/`,
+`AGENTS.md`, and the `extensions/`, `skills/`, `prompts/`, and `themes/`
+directories. Machine-local state such as `mcp.json`, `sessions/`, `npm/`,
 `models-store.json`, `run-history.jsonl`, `trust.json`, and `missions/` stays out
 of Git, and `rc` never rewrites `settings.json`.
 
